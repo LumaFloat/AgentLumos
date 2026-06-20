@@ -1,0 +1,465 @@
+import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { runCli } from "../../src/cli/index";
+import { getDefaultConfig } from "../../src/config/config";
+import type { DaemonResponse } from "../../src/types";
+
+function createClientFactory(responses: DaemonResponse[]) {
+  const requests: unknown[] = [];
+
+  return {
+    requests,
+    createClient: () => ({
+      async request(request: unknown) {
+        requests.push(request);
+        const response = responses.shift();
+        if (!response) {
+          throw new Error("missing response");
+        }
+        return response;
+      },
+    }),
+  };
+}
+
+describe("runCli", () => {
+  it("sends active as a setState request", async () => {
+    const clientFactory = createClientFactory([{ ok: true }]);
+    const exitCode = await runCli(["active"], {
+      createClient: clientFactory.createClient,
+      spawnDaemon: async () => {},
+      stdout: { write: async () => true },
+      stderr: { write: async () => true },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(clientFactory.requests).toEqual([
+      { type: "setState", state: "active", ttlMs: undefined, overrides: undefined },
+    ]);
+  });
+
+  it("sends runtime overrides ahead of config", async () => {
+    const clientFactory = createClientFactory([{ ok: true }]);
+    const exitCode = await runCli([
+      "active",
+      "--ttl",
+      "5s",
+      "--leds",
+      "caps,num",
+      "--animation",
+      "scan-pingpong",
+    ], {
+      createClient: clientFactory.createClient,
+      spawnDaemon: async () => {},
+      stdout: { write: async () => true },
+      stderr: { write: async () => true },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(clientFactory.requests).toEqual([
+      {
+        type: "setState",
+        state: "active",
+        ttlMs: 5_000,
+        overrides: {
+          leds: ["caps", "num"],
+          animation: "scan-pingpong",
+        },
+      },
+    ]);
+  });
+
+  it("treats ttl zero as an infinite request", async () => {
+    const clientFactory = createClientFactory([{ ok: true }]);
+    const exitCode = await runCli(["active", "--ttl", "0"], {
+      createClient: clientFactory.createClient,
+      spawnDaemon: async () => {},
+      stdout: { write: async () => true },
+      stderr: { write: async () => true },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(clientFactory.requests).toEqual([
+      {
+        type: "setState",
+        state: "active",
+        ttlMs: 0,
+        overrides: undefined,
+      },
+    ]);
+  });
+
+  it("sends a direct LED poke request", async () => {
+    const clientFactory = createClientFactory([{ ok: true }]);
+    const exitCode = await runCli(["poke", "num"], {
+      createClient: clientFactory.createClient,
+      spawnDaemon: async () => {},
+      stdout: { write: async () => true },
+      stderr: { write: async () => true },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(clientFactory.requests).toEqual([
+      {
+        type: "pokeLed",
+        led: "num",
+      },
+    ]);
+  });
+
+  it("stops the daemon explicitly", async () => {
+    const clientFactory = createClientFactory([{ ok: true }]);
+    const exitCode = await runCli(["daemon", "stop"], {
+      createClient: clientFactory.createClient,
+      spawnDaemon: async () => {},
+      stdout: { write: async () => true },
+      stderr: { write: async () => true },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(clientFactory.requests).toEqual([{ type: "shutdown" }]);
+  });
+
+  it("restarts the daemon explicitly", async () => {
+    let statusAttempts = 0;
+    const requests: unknown[] = [];
+    const spawnCalls: string[] = [];
+
+    const exitCode = await runCli(["daemon", "restart"], {
+      createClient: () => ({
+        async request(request: unknown) {
+          requests.push(request);
+
+          if ((request as { type?: string }).type === "shutdown") {
+            return { ok: true };
+          }
+
+          statusAttempts += 1;
+          if (statusAttempts < 3) {
+            const error = new Error("connect ECONNREFUSED");
+            (error as { code?: string }).code = "ECONNREFUSED";
+            throw error;
+          }
+
+          return {
+            ok: true,
+            data: {
+              daemon: "running",
+            },
+          };
+        },
+      }),
+      spawnDaemon: async () => {
+        spawnCalls.push("spawned");
+      },
+      stdout: { write: async () => true },
+      stderr: { write: async () => true },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(spawnCalls).toEqual(["spawned"]);
+    expect(requests[0]).toMatchObject({ type: "shutdown" });
+    expect(requests.filter((request) => (request as { type?: string }).type === "getStatus").length).toBeGreaterThan(0);
+  });
+
+  it("sends blocked requests", async () => {
+    const blockedClient = createClientFactory([{ ok: true }]);
+    const blockedExit = await runCli(["blocked"], {
+      createClient: blockedClient.createClient,
+      spawnDaemon: async () => {},
+      stdout: { write: async () => true },
+      stderr: { write: async () => true },
+    });
+
+    expect(blockedExit).toBe(0);
+    expect(blockedClient.requests[0]).toMatchObject({
+      type: "setState",
+      state: "blocked",
+    });
+  });
+
+  it("accepts comma or whitespace separated LED config values", async () => {
+    const clientFactory = createClientFactory([{ ok: true }]);
+    const exitCode = await runCli(["config", "set", "leds", "caps num scroll"], {
+      createClient: clientFactory.createClient,
+      spawnDaemon: async () => {},
+      stdout: { write: async () => true },
+      stderr: { write: async () => true },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(clientFactory.requests).toEqual([
+      { type: "setConfig", patch: { leds: ["caps", "num", "scroll"] } },
+    ]);
+  });
+
+  it("sends config clean as a resetConfig request", async () => {
+    const stdout: string[] = [];
+    const clientFactory = createClientFactory([
+      {
+        ok: true,
+        data: {
+          deleted: true,
+          path: "C:\\Users\\Apollo\\AppData\\Roaming\\AgentLumos\\config.json",
+        },
+      },
+    ]);
+    const exitCode = await runCli(["config", "clean"], {
+      createClient: clientFactory.createClient,
+      spawnDaemon: async () => {},
+      stdout: { write: async (chunk: string) => { stdout.push(chunk); } },
+      stderr: { write: async () => true },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(clientFactory.requests).toEqual([{ type: "resetConfig" }]);
+    expect(stdout.join("")).toContain('"deleted": true');
+    expect(stdout.join("")).toContain('"path"');
+  });
+
+  it("prints hook integration config", async () => {
+    const stdout: string[] = [];
+    const clientFactory = createClientFactory([
+      {
+        ok: true,
+        data: {
+          hookIntegrations: {
+            codex: {
+              enabled: false,
+              hooks: {
+                Stop: "success",
+              },
+            },
+            "claude-code": {
+              enabled: false,
+              hooks: {
+                SessionEnd: "idle",
+              },
+            },
+          },
+        },
+      },
+    ]);
+    const exitCode = await runCli(["hook", "get"], {
+      createClient: clientFactory.createClient,
+      spawnDaemon: async () => {},
+      stdout: { write: async (chunk: string) => { stdout.push(chunk); } },
+      stderr: { write: async () => true },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(clientFactory.requests).toEqual([{ type: "getConfig" }]);
+    expect(stdout.join("")).toContain('"codex"');
+  });
+
+  it("installs native hook snippets", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agentlumos-hooks-"));
+    const hooksPath = path.join(dir, "hooks.json");
+    const originalPath = process.env.AGENTLUMOS_CODEX_HOOKS_PATH;
+    process.env.AGENTLUMOS_CODEX_HOOKS_PATH = hooksPath;
+    const stdout: string[] = [];
+    const clientFactory = createClientFactory([
+      {
+        ok: true,
+        data: {
+          hookIntegrations: {
+            codex: {
+              enabled: false,
+              hooks: {
+                SessionStart: "active",
+                PermissionRequest: "blocked",
+              },
+            },
+            "claude-code": {
+              enabled: false,
+              hooks: {},
+            },
+          },
+        },
+      },
+    ]);
+    const exitCode = await runCli(["hook", "install", "codex"], {
+        createClient: clientFactory.createClient,
+        spawnDaemon: async () => {},
+        stdout: { write: async (chunk: string) => { stdout.push(chunk); } },
+        stderr: { write: async () => true },
+      });
+    process.env.AGENTLUMOS_CODEX_HOOKS_PATH = originalPath;
+
+    expect(exitCode).toBe(0);
+    expect(clientFactory.requests).toEqual([{ type: "getConfig" }]);
+    expect(stdout.join("")).toContain('"installed": 2');
+    expect(stdout.join("")).toContain('"codex"');
+    expect(fs.readFileSync(hooksPath, "utf8")).toContain("AgentLumos: active");
+    expect(fs.readFileSync(hooksPath, "utf8")).toContain("AgentLumos: blocked");
+  });
+
+  it("uninstalls only AgentLumos hook handlers", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agentlumos-hooks-"));
+    const hooksPath = path.join(dir, "hooks.json");
+    const originalPath = process.env.AGENTLUMOS_CODEX_HOOKS_PATH;
+    process.env.AGENTLUMOS_CODEX_HOOKS_PATH = hooksPath;
+    fs.writeFileSync(
+      hooksPath,
+      `\uFEFF${JSON.stringify(
+        {
+          hooks: {
+            Stop: [
+              {
+                hooks: [
+                  { type: "command", command: "lumos success", statusMessage: "AgentLumos: success" },
+                  { type: "command", command: "echo keep", statusMessage: "Keep me" },
+                ],
+              },
+            ],
+          },
+        },
+        null,
+        2,
+      )}`,
+      "utf8",
+    );
+
+    const stdout: string[] = [];
+    const exitCode = await runCli(["hook", "uninstall", "codex"], {
+      createClient: () => {
+        throw new Error("should not connect");
+      },
+      spawnDaemon: async () => {},
+      stdout: { write: async (chunk: string) => { stdout.push(chunk); } },
+      stderr: { write: async () => true },
+    });
+    process.env.AGENTLUMOS_CODEX_HOOKS_PATH = originalPath;
+
+    const updated = fs.readFileSync(hooksPath, "utf8");
+    expect(exitCode).toBe(0);
+    expect(stdout.join("")).toContain('"removed": 1');
+    expect(updated).not.toContain("AgentLumos:");
+    expect(updated).toContain("echo keep");
+  });
+
+  it("prints hook check output", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agentlumos-hooks-"));
+    const hooksPath = path.join(dir, "hooks.json");
+    const originalPath = process.env.AGENTLUMOS_CODEX_HOOKS_PATH;
+    const originalPathEnv = process.env.PATH;
+    const originalPathExt = process.env.PATHEXT;
+    process.env.AGENTLUMOS_CODEX_HOOKS_PATH = hooksPath;
+    process.env.PATHEXT = ".CMD;.EXE";
+    process.env.PATH = `${dir}${path.delimiter}${originalPathEnv ?? ""}`;
+    for (const command of ["lumos", "codex", "claude"]) {
+      fs.writeFileSync(path.join(dir, `${command}.cmd`), "", "utf8");
+    }
+    const config = getDefaultConfig();
+    const codexHooks = Object.fromEntries(
+      Object.entries(config.hookIntegrations.codex.hooks).map(([eventName, state]) => [
+        eventName,
+        [{ hooks: [{ type: "command", command: `lumos ${state}`, statusMessage: `AgentLumos: ${state}` }] }],
+      ]),
+    );
+    fs.writeFileSync(
+      hooksPath,
+      JSON.stringify({
+        hooks: codexHooks,
+      }),
+      "utf8",
+    );
+    const stdout: string[] = [];
+    const clientFactory = createClientFactory([
+      { ok: true, data: { daemon: "running" } },
+      { ok: true, data: config },
+    ]);
+    const exitCode = await runCli(["hook", "check"], {
+      createClient: clientFactory.createClient,
+      spawnDaemon: async () => {},
+      stdout: { write: async (chunk: string) => { stdout.push(chunk); } },
+      stderr: { write: async () => true },
+    });
+    process.env.AGENTLUMOS_CODEX_HOOKS_PATH = originalPath;
+    process.env.PATH = originalPathEnv;
+    process.env.PATHEXT = originalPathExt;
+
+    expect(exitCode).toBe(0);
+    expect(clientFactory.requests).toEqual([{ type: "getStatus" }, { type: "getConfig" }]);
+    expect(stdout.join("")).toContain("AgentLumos Hook Check");
+    expect(stdout.join("")).toContain("Codex");
+    expect(stdout.join("")).toContain("Hooks: installed");
+    expect(stdout.join("")).toContain("Handlers: 6");
+    expect(stdout.join("")).toContain("Result: not ready");
+  });
+
+  it("prints hook check as json when requested", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agentlumos-hooks-"));
+    const originalPath = process.env.AGENTLUMOS_CODEX_HOOKS_PATH;
+    const originalPathEnv = process.env.PATH;
+    const originalPathExt = process.env.PATHEXT;
+    process.env.AGENTLUMOS_CODEX_HOOKS_PATH = path.join(dir, "missing-hooks.json");
+    process.env.PATHEXT = ".CMD;.EXE";
+    process.env.PATH = `${dir}${path.delimiter}${originalPathEnv ?? ""}`;
+    for (const command of ["lumos", "codex", "claude"]) {
+      fs.writeFileSync(path.join(dir, `${command}.cmd`), "", "utf8");
+    }
+    const stdout: string[] = [];
+    const clientFactory = createClientFactory([
+      { ok: true, data: { daemon: "running" } },
+      { ok: true, data: getDefaultConfig() },
+    ]);
+
+    const exitCode = await runCli(["hook", "check", "--json"], {
+      createClient: clientFactory.createClient,
+      spawnDaemon: async () => {},
+      stdout: { write: async (chunk: string) => { stdout.push(chunk); } },
+      stderr: { write: async () => true },
+    });
+    process.env.AGENTLUMOS_CODEX_HOOKS_PATH = originalPath;
+    process.env.PATH = originalPathEnv;
+    process.env.PATHEXT = originalPathExt;
+
+    const output = JSON.parse(stdout.join(""));
+    expect(exitCode).toBe(0);
+    expect(output.agentLumosHooksReady).toBe(false);
+    expect(output.targets.codex.toolInstalled).toBe(true);
+    expect(output.targets.codex.hookInstalled).toBe(false);
+    expect(output.targets.codex.missingEvents).toContain("SessionStart");
+    expect(output.sections).toBeUndefined();
+    expect(output.targets.codex.enabled).toBeUndefined();
+  });
+
+  it("spawns the daemon and retries after an ipc failure", async () => {
+    let firstAttempt = true;
+    const requests: unknown[] = [];
+    const spawnCalls: string[] = [];
+
+    const exitCode = await runCli(["status"], {
+      createClient: () => ({
+        async request(request: unknown) {
+          requests.push(request);
+          if (firstAttempt) {
+            firstAttempt = false;
+            const error = new Error("connect ECONNREFUSED");
+            (error as { code?: string }).code = "ECONNREFUSED";
+            throw error;
+          }
+
+          return {
+            ok: true,
+            data: {
+              daemon: "running",
+            },
+          };
+        },
+      }),
+      spawnDaemon: async () => {
+        spawnCalls.push("spawned");
+      },
+      stdout: { write: async () => true },
+      stderr: { write: async () => true },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(spawnCalls).toEqual(["spawned"]);
+    expect(requests).toEqual([{ type: "getStatus" }, { type: "getStatus" }]);
+  });
+});

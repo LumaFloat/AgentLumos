@@ -1,0 +1,127 @@
+# Windows 手动测试指南
+
+本文用于在 Windows 本机上手动验证 AgentLumos 的基础功能和键盘 Lock LED 行为。
+
+## 1. 准备
+
+- 先确认你在仓库目录中。
+- 确认键盘有可用的 Caps Lock、Num Lock、Scroll Lock 指示灯。
+- 如果只有 1 个或 2 个灯可用，后面把 `leds` 只配置成可用的灯。
+
+## 2. 安装与构建
+
+```powershell
+# 安装依赖。
+npm install
+
+# 运行测试。
+npm test
+
+# 构建 CLI。
+npm run build
+
+# 全局注册本地 lumos 命令。
+npm install -g .
+```
+
+## 3. 基础命令
+
+```powershell
+# 查看 daemon 状态和当前 LED 状态。
+lumos status
+
+# 查看当前配置。
+lumos config get
+
+# 删除配置文件，让下次启动重新生成默认配置。
+lumos config clean
+
+# 播放内置动画，确认键盘灯是否响应。
+lumos demo
+```
+
+重点观察：
+
+- `lumos status` 是否稳定返回当前状态对象。
+- `lumos demo` 是否能驱动键盘指示灯变化。
+- `lumos config clean` 是否删除旧配置并让下次启动回到默认值。
+
+## 4. 手动状态测试
+
+先配置可用灯的顺序：
+
+```powershell
+# 按实体键盘从左到右设置可用 LED 顺序。
+lumos config set leds caps,num,scroll
+```
+
+如果你的键盘不是这三个灯都可用，就改成只包含可用灯，例如：
+
+```powershell
+# 只使用 Caps Lock 指示灯。
+lumos config set leds caps
+
+# 使用 Caps Lock 和 Num Lock 指示灯。
+lumos config set leds caps,num
+```
+
+然后依次执行：
+
+```powershell
+# 显示 active 动画。
+lumos active
+
+# 显示 blocked 动画。
+lumos blocked
+
+# 显示 success 动画。
+lumos success
+
+# 显示 error 动画。
+lumos error
+
+# 停止动画并恢复原始 Lock 状态。
+lumos off
+```
+
+观察：
+
+- `active` 是否是持续的工作态动画。
+- `blocked` 是否是等待输入的提示态动画。
+- `success` 是否是明显但短促的完成提示。
+- `error` 是否是更醒目的失败提示。
+- `off` 是否恢复到原始 Lock 状态。
+
+## 5. Hook 测试
+
+```powershell
+# 检查 hook 接入状态。
+lumos hook check
+
+# 以 JSON 输出 hook 接入状态。
+lumos hook check --json
+
+# 安装 Codex hook handlers。
+lumos hook install codex
+
+# 卸载 Codex hook handlers。
+lumos hook uninstall codex
+
+# 安装 Claude Code hook handlers。
+lumos hook install claude-code
+
+# 卸载 Claude Code hook handlers。
+lumos hook uninstall claude-code
+```
+
+重点观察：
+
+- `hook check` 是否区分已安装和未安装的目标。
+- `hook install` 是否写入目标工具的 hook 配置。
+- `hook uninstall` 是否移除 AgentLumos 管理的 hook 配置。
+
+## 6. 常见问题
+
+- 如果动画亮了但键盘灯没有变化，先确认是否是笔记本内置键盘、外接键盘，或者驱动不支持该灯。
+- 如果某个灯顺序不对，先修正 `lumos config set leds ...`。
+- 如果执行后无法恢复，先运行 `lumos off` 再看 `lumos status`。
