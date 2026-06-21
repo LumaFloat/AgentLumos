@@ -59,6 +59,7 @@ export interface LumosStatus {
   configuredLeds: LedName[];
   activeAnimation: AnimationName | null;
   ttlRemainingMs: number | null;
+  effectSuppressed: boolean;
   originalLockStateCaptured: boolean;
   driver: string;
   lastError: string | null;

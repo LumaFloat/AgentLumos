@@ -14,6 +14,7 @@ const status: LumosStatus = {
   configuredLeds: ["caps", "num", "scroll"],
   activeAnimation: null,
   ttlRemainingMs: null,
+  effectSuppressed: false,
   originalLockStateCaptured: false,
   driver: "fake",
   lastError: null,

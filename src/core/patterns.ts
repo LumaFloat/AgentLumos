@@ -1,12 +1,11 @@
 import type { LedName, LedSelector, LockState, LumosAnimationConfig, RenderStep } from "../types";
 
-const ALL_LEDS: LedName[] = ["caps", "num", "scroll"];
-
 function setLedGroup(
   activeLeds: readonly LedName[],
+  configuredLeds: readonly LedName[],
 ): Partial<LockState> {
   const active = new Set(activeLeds);
-  return ALL_LEDS.reduce<Partial<LockState>>((values, led) => {
+  return configuredLeds.reduce<Partial<LockState>>((values, led) => {
     values[led] = active.has(led);
     return values;
   }, {});
@@ -67,9 +66,9 @@ export function buildAnimationSteps(
   let atMs = 0;
 
   for (const sequenceStep of animation.steps) {
-    steps.push({ atMs, values: setLedGroup(resolveLedSelectors(sequenceStep.leds, configuredLeds)) });
+    steps.push({ atMs, values: setLedGroup(resolveLedSelectors(sequenceStep.leds, configuredLeds), configuredLeds) });
     atMs += sequenceStep.onMs;
-    steps.push({ atMs, values: setLedGroup([]) });
+    steps.push({ atMs, values: setLedGroup([], configuredLeds) });
     atMs += sequenceStep.offMs;
   }
 

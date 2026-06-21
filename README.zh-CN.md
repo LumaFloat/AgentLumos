@@ -28,6 +28,7 @@ error    [123] [---]         任务失败
 - **Hook 驱动**：把 Codex 和 Claude Code 的 hook 事件映射到 LED 状态。
 - **V0.1 不需要额外硬件**：复用许多键盘自带的 Lock 指示灯。
 - **自动恢复状态**：执行动画前记录原始 Lock 状态，动画结束后恢复。
+- **输入时临时静音**：你开始打字时，LED 动画会暂时静音并恢复原始 Lock 状态；停止输入几秒后，如果 agent 状态仍有效，动画会继续。
 - **可配置**：可以配置 LED 顺序、状态 TTL、动画和 hook 映射。
 - **Windows 原生**：V0.1 使用当前 Windows 键盘 Lock 行为。
 
@@ -146,6 +147,8 @@ lumos hook install claude-code
 | `states` | 每个状态对应的动画和 TTL。 |
 | `animations` | 可复用的 LED 动画定义。 |
 | `hookIntegrations` | Agent hook 事件到 AgentLumos 状态的映射。 |
+
+`lumos status` 中的 `effectSuppressed` 表示当前逻辑状态仍然存在，但因为检测到键盘输入，LED 动画正在临时静音。
 
 使用 `lumos config clean` 可以删除当前配置，并让 AgentLumos 在下次启动时重新生成默认配置。
 

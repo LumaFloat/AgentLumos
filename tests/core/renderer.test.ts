@@ -59,10 +59,25 @@ describe("renderState", () => {
         configuredLeds: [],
       }),
     ).toEqual([
-      { atMs: 0, values: { caps: false, num: false, scroll: false } },
-      { atMs: 90, values: { caps: false, num: false, scroll: false } },
-      { atMs: 210, values: { caps: false, num: false, scroll: false } },
-      { atMs: 300, values: { caps: false, num: false, scroll: false } },
+      { atMs: 0, values: {} },
+      { atMs: 90, values: {} },
+      { atMs: 210, values: {} },
+      { atMs: 300, values: {} },
+    ]);
+  });
+
+  it("does not write unconfigured Lock LEDs", () => {
+    expect(
+      renderState({
+        state: "active",
+        animation: chase,
+        configuredLeds: ["caps"],
+      }),
+    ).toEqual([
+      { atMs: 0, values: { caps: true } },
+      { atMs: 90, values: { caps: false } },
+      { atMs: 210, values: { caps: false } },
+      { atMs: 300, values: { caps: false } },
     ]);
   });
 

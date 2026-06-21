@@ -28,6 +28,7 @@ error    [123] [---]         task failed
 - **Hook driven**: maps Codex and Claude Code hook events to LED states.
 - **No extra hardware for V0.1**: uses the Lock indicator LEDs already on many keyboards.
 - **Restores state**: captures the original Lock state and restores it after animations.
+- **Quiet while typing**: temporarily suppresses LED animations while you type, restores the original Lock state, and resumes after a short idle window if the agent state is still active.
 - **Configurable**: choose LED order, state TTLs, animations, and hook mappings.
 - **Windows native**: uses the current Windows keyboard Lock behavior in V0.1.
 
@@ -146,6 +147,8 @@ Important fields:
 | `states` | Animation and TTL for each state. |
 | `animations` | Reusable LED animation definitions. |
 | `hookIntegrations` | Agent hook event to AgentLumos state mappings. |
+
+In `lumos status`, `effectSuppressed` means the logical state is still active, but LED animation is temporarily quiet because keyboard input was detected.
 
 Use `lumos config clean` to remove the current config and let AgentLumos regenerate the default config on the next launch.
 

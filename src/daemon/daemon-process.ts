@@ -6,6 +6,7 @@ import { getDaemonPipePath } from "./pipe-path";
 import { handleDaemonRequest } from "./ipc-handler";
 import { createFakeKeyboardDriver } from "../drivers/keyboard/fake";
 import { createWindowsKeyboardDriver } from "../drivers/keyboard/windows";
+import { createWindowsInputActivityMonitor } from "../drivers/input/windows";
 import type { DaemonRequest, LockState } from "../types";
 
 const pipePath = getDaemonPipePath();
@@ -25,6 +26,7 @@ const driver =
 const daemon = createLumosDaemon({
   driver,
   configuredLeds: ["caps", "num", "scroll"],
+  inputActivityMonitor: createWindowsInputActivityMonitor(),
 });
 
 const server = createNamedPipeServer(pipePath, async (request: DaemonRequest) => {

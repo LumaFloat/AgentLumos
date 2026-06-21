@@ -17,6 +17,7 @@ export interface RunEffectOptions {
   ttlMs?: number;
   clock: EffectClock;
   signal?: AbortSignal;
+  isSuppressed?: () => boolean;
 }
 
 function isAborted(signal?: AbortSignal): boolean {
@@ -49,6 +50,7 @@ async function playCycle(
   configuredLeds: readonly LedName[],
   originalLockState: LockState,
   signal?: AbortSignal,
+  isSuppressed?: () => boolean,
 ): Promise<void> {
   const steps = renderState({
     state,
@@ -71,6 +73,11 @@ async function playCycle(
 
     if (isAborted(signal)) {
       return;
+    }
+
+    if (isSuppressed?.()) {
+      previousAtMs = step.atMs;
+      continue;
     }
 
     currentState = await applyStep(driver, currentState, step.values);
@@ -96,7 +103,7 @@ export async function runEffectCycle(options: RunEffectOptions): Promise<void> {
 }
 
 export async function runEffectLoop(options: RunEffectOptions): Promise<void> {
-  const { driver, state, animation, configuredLeds, originalLockState, ttlMs, clock, signal } = options;
+  const { driver, state, animation, configuredLeds, originalLockState, ttlMs, clock, signal, isSuppressed } = options;
 
   if (ttlMs === undefined) {
     throw new Error("runEffectLoop requires a ttlMs value.");
@@ -104,13 +111,13 @@ export async function runEffectLoop(options: RunEffectOptions): Promise<void> {
 
   if (ttlMs === 0) {
     while (!isAborted(signal)) {
-      await playCycle(driver, clock, state, animation, configuredLeds, originalLockState, signal);
+      await playCycle(driver, clock, state, animation, configuredLeds, originalLockState, signal, isSuppressed);
     }
   } else {
     const endAt = clock.now() + ttlMs;
 
     while (clock.now() < endAt && !isAborted(signal)) {
-      await playCycle(driver, clock, state, animation, configuredLeds, originalLockState, signal);
+      await playCycle(driver, clock, state, animation, configuredLeds, originalLockState, signal, isSuppressed);
     }
   }
 

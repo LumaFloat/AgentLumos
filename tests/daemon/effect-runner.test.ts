@@ -66,7 +66,7 @@ describe("runEffectLoop", () => {
     expect(driver.getWriteHistory().length).toBeGreaterThan(3);
   });
 
-  it("still runs when no LEDs are configured", async () => {
+  it("does not write animation steps when no LEDs are configured", async () => {
     const driver = createFakeKeyboardDriver(original);
 
     await runEffectLoop({
@@ -79,7 +79,7 @@ describe("runEffectLoop", () => {
       clock: createManualClock(),
     });
 
-    expect(driver.getWriteHistory().length).toBeGreaterThan(0);
+    expect(driver.getWriteHistory()).toEqual([original]);
   });
 
   it("does not restore the original state when aborted by a replacement", async () => {
