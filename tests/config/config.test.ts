@@ -22,10 +22,10 @@ describe("config defaults", () => {
       leds: ["num", "caps", "scroll"],
       defaultTtl: "30m",
       states: {
-        active: { animation: "chase-rider", ttl: "0" },
-        blocked: { animation: "prompt-shift", ttl: "15s" },
-        success: { animation: "embrace-confirm", ttl: "8s" },
-        error: { animation: "alert-triple", ttl: "12s" },
+        active: { animation: "chase-rider", ttl: "10m" },
+        blocked: { animation: "prompt-shift", ttl: "60s" },
+        success: { animation: "embrace-confirm", ttl: "10s" },
+        error: { animation: "alert-triple", ttl: "20s" },
       },
       animations: {
         "chase-rider": { type: "sequence" },
@@ -60,6 +60,24 @@ describe("config path", () => {
 });
 
 describe("config validation", () => {
+  it("rejects empty LED lists", () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "agentlumos-config-"));
+    const file = path.join(dir, "config.json");
+    saveConfig(defaultConfig, file);
+
+    expect(() =>
+      saveConfig(
+        {
+          ...defaultConfig,
+          leds: [],
+        },
+        file,
+      ),
+    ).toThrow(/at least one LED/i);
+
+    expect(() => applyConfigPatch(loadConfig(file), { leds: [] })).toThrow(/at least one LED/i);
+  });
+
   it("rejects invalid LED names and duplicates", () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), "agentlumos-config-"));
     const file = path.join(dir, "config.json");

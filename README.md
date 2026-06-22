@@ -29,6 +29,7 @@ error    [123] [---]         task failed
 - **No extra hardware for the initial setup**: uses the Lock indicator LEDs already on many keyboards.
 - **Restores state**: captures the original Lock state and restores it after animations.
 - **Quiet while interacting**: temporarily suppresses LED animations while you type or click/drag the mouse, restores the original Lock state, and resumes after a short idle window if the agent state is still active.
+- **State leases**: `active` now defaults to a 10 minute lease and renews on new hooks; `blocked`, `success`, and `error` default to 60 seconds, 10 seconds, and 20 seconds so stale states do not linger.
 - **Configurable**: choose LED order, state TTLs, animations, and hook mappings.
 - **Windows native**: uses the current Windows keyboard Lock behavior.
 
@@ -148,7 +149,15 @@ Important fields:
 | `animations` | Reusable LED animation definitions. |
 | `hookIntegrations` | Agent hook event to AgentLumos state mappings. |
 
-In `lumos status`, `effectSuppressed` means the logical state is still active, but LED animation is temporarily quiet because keyboard or mouse-button activity was detected. Mouse movement and wheel scrolling are not used for suppression.
+In `lumos status`, `effectSuppressed` means the logical state is still active, but LED animation is temporarily quiet because keyboard or mouse-button activity was detected. `pendingReminder` means the latest finite `blocked`, `success`, or `error` state expired while quiet and is waiting to replay once input becomes idle. Mouse movement and wheel scrolling are not used for suppression.
+
+Lease behavior:
+
+- `active` renews on every matching hook and never replays after expiry.
+- `blocked`, `success`, and `error` keep their latest lease while quiet, and the newest expired one may replay once after input becomes idle.
+- Deferred replay lasts at least 5s for `blocked`, 3s for `success`, and 5s for `error`.
+- Deferred reminders older than 5 minutes are discarded.
+- `lumos off` clears both visible and pending state.
 
 Use `lumos config clean` to remove the current config and let AgentLumos regenerate the default config on the next launch.
 

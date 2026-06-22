@@ -7,10 +7,10 @@ describe("shared types", () => {
       leds: ["num", "caps", "scroll"],
       defaultTtl: "30m",
       states: {
-        active: { animation: "chase-rider", ttl: "0" },
-        blocked: { animation: "prompt-shift", ttl: "15s" },
-        success: { animation: "embrace-confirm", ttl: "8s" },
-        error: { animation: "alert-triple", ttl: "12s" },
+        active: { animation: "chase-rider", ttl: "10m" },
+        blocked: { animation: "prompt-shift", ttl: "60s" },
+        success: { animation: "embrace-confirm", ttl: "10s" },
+        error: { animation: "alert-triple", ttl: "20s" },
       },
       animations: {
         "chase-rider": {
@@ -50,7 +50,7 @@ describe("shared types", () => {
       },
     };
 
-    expect(config.states.success.ttl).toBe("8s");
+    expect(config.states.success.ttl).toBe("10s");
   });
 
   it("allows setState daemon requests", () => {

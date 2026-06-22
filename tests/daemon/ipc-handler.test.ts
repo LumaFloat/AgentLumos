@@ -15,6 +15,7 @@ const status: LumosStatus = {
   activeAnimation: null,
   ttlRemainingMs: null,
   effectSuppressed: false,
+  pendingReminder: false,
   originalLockStateCaptured: false,
   driver: "fake",
   lastError: null,
@@ -79,6 +80,7 @@ describe("handleDaemonRequest", () => {
       {
         type: "setState",
         state: "active",
+        ttlMs: 0,
       },
     );
 

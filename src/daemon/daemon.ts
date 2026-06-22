@@ -17,12 +17,46 @@ export interface LumosDaemonOptions {
 
 type ActiveState = Exclude<LumosState, "idle">;
 
+interface EffectDescriptor {
+  state: ActiveState;
+  animationName: AnimationName;
+  animation: LumosAnimationConfig;
+  configuredLeds: readonly LedName[];
+  ttlMs: number;
+  receivedAt: number;
+  expiresAt: number | null;
+}
+
+interface PendingReminder {
+  descriptor: EffectDescriptor;
+  pendingSince: number;
+}
+
+const MAX_PENDING_REMINDER_AGE_MS = 5 * 60 * 1000;
+
 function toErrorMessage(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
   }
 
   return String(error);
+}
+
+function minimumReminderMs(state: ActiveState): number {
+  switch (state) {
+    case "blocked":
+      return 5_000;
+    case "success":
+      return 3_000;
+    case "error":
+      return 5_000;
+    case "active":
+      return 0;
+  }
+}
+
+function canDeferReminder(state: ActiveState): boolean {
+  return state !== "active";
 }
 
 export function createLumosDaemon(options: LumosDaemonOptions) {
@@ -45,13 +79,87 @@ export function createLumosDaemon(options: LumosDaemonOptions) {
   let activeTask: Promise<void> | null = null;
   let inputActivitySubscription: InputActivitySubscription | null = null;
   let effectVersion = 0;
+  let currentEffect: EffectDescriptor | null = null;
+  let pendingReminder: PendingReminder | null = null;
 
-  async function captureOriginalLockState(): Promise<LockState | null> {
+  function getRemainingTtlMs(descriptor: EffectDescriptor | null = currentEffect): number | null {
+    if (!descriptor) {
+      return null;
+    }
+
+    if (descriptor.expiresAt === null) {
+      return 0;
+    }
+
+    return Math.max(0, descriptor.expiresAt - clock.now());
+  }
+
+  function isExpired(descriptor: EffectDescriptor): boolean {
+    return descriptor.expiresAt !== null && clock.now() >= descriptor.expiresAt;
+  }
+
+  function syncActiveStatus(descriptor: EffectDescriptor, effectSuppressed: boolean, activeAnimation: AnimationName | null) {
+    status = {
+      ...status,
+      state: descriptor.state,
+      configuredLeds: [...descriptor.configuredLeds],
+      activeAnimation,
+      ttlRemainingMs: getRemainingTtlMs(descriptor),
+      effectSuppressed,
+      pendingReminder: false,
+      originalLockStateCaptured: originalLockState !== null,
+      lastError: null,
+    };
+  }
+
+  function syncIdleStatus(extra: Partial<LumosStatus> = {}) {
+    status = {
+      ...status,
+      state: "idle",
+      configuredLeds: [...options.configuredLeds],
+      activeAnimation: null,
+      ttlRemainingMs: null,
+      effectSuppressed: false,
+      pendingReminder: false,
+      originalLockStateCaptured: false,
+      ...extra,
+    };
+  }
+
+  function createEffectDescriptor(
+    state: ActiveState,
+    animationName: AnimationName,
+    animation: LumosAnimationConfig,
+    configuredLeds: readonly LedName[],
+    ttlMs: number,
+  ): EffectDescriptor {
+    const receivedAt = clock.now();
+    return {
+      state,
+      animationName,
+      animation,
+      configuredLeds: [...configuredLeds],
+      ttlMs,
+      receivedAt,
+      expiresAt: ttlMs === 0 ? null : receivedAt + ttlMs,
+    };
+  }
+
+  async function captureOriginalLockState(version: number): Promise<LockState | null> {
     if (originalLockState !== null) {
       return originalLockState;
     }
 
-    originalLockState = cloneLockState(await options.driver.readState());
+    const snapshot = cloneLockState(await options.driver.readState());
+    if (version !== effectVersion) {
+      return null;
+    }
+
+    if (originalLockState !== null) {
+      return originalLockState;
+    }
+
+    originalLockState = snapshot;
     status = {
       ...status,
       originalLockStateCaptured: true,
@@ -59,22 +167,19 @@ export function createLumosDaemon(options: LumosDaemonOptions) {
     return originalLockState;
   }
 
-  function clearActiveEffect() {
-    stopInputActivityMonitor();
-    originalLockState = null;
-    status = {
-      ...status,
-      state: "idle",
-      activeAnimation: null,
-      ttlRemainingMs: null,
-      effectSuppressed: false,
-      originalLockStateCaptured: false,
-    };
-  }
-
   function stopInputActivityMonitor() {
     inputActivitySubscription?.stop();
     inputActivitySubscription = null;
+  }
+
+  function clearActiveEffect() {
+    stopInputActivityMonitor();
+    activeController = null;
+    activeTask = null;
+    originalLockState = null;
+    currentEffect = null;
+    pendingReminder = null;
+    syncIdleStatus();
   }
 
   async function suppressEffectForKeyboardInput(version: number) {
@@ -99,8 +204,35 @@ export function createLumosDaemon(options: LumosDaemonOptions) {
     }
   }
 
-  function resumeEffectAfterKeyboardIdle(version: number) {
+  async function resumeEffectAfterKeyboardIdle(version: number) {
     if (version !== effectVersion || status.state === "idle") {
+      return;
+    }
+
+    if (await replayPendingReminder(version)) {
+      return;
+    }
+
+    if (currentEffect && status.effectSuppressed && isExpired(currentEffect)) {
+      if (!canDeferReminder(currentEffect.state)) {
+        await restoreOriginalState();
+        return;
+      }
+
+      pendingReminder = {
+        descriptor: currentEffect,
+        pendingSince: currentEffect.expiresAt ?? clock.now(),
+      };
+      activeController?.abort();
+      activeController = null;
+      activeTask = null;
+      status = {
+        ...status,
+        ttlRemainingMs: 0,
+        pendingReminder: true,
+      };
+
+      await replayPendingReminder(version);
       return;
     }
 
@@ -127,76 +259,75 @@ export function createLumosDaemon(options: LumosDaemonOptions) {
     }
 
     stopInputActivityMonitor();
-    status = {
-      ...status,
-      state: "idle",
-      activeAnimation: null,
-      ttlRemainingMs: null,
-      effectSuppressed: false,
-      originalLockStateCaptured: false,
-      lastError: toErrorMessage(error),
-    };
-    originalLockState = null;
     activeController = null;
     activeTask = null;
+    currentEffect = null;
+    pendingReminder = null;
+    originalLockState = null;
+    syncIdleStatus({
+      lastError: toErrorMessage(error),
+    });
   }
 
-  async function startSustainedEffect(
-    state: ActiveState,
-    animationName: AnimationName,
-    animation: LumosAnimationConfig,
-    configuredLeds: readonly LedName[],
-    ttlMs: number,
-  ) {
-    effectVersion += 1;
-    const version = effectVersion;
+  async function replayPendingReminder(version: number): Promise<boolean> {
+    if (version !== effectVersion || !pendingReminder) {
+      return false;
+    }
 
-    activeController?.abort();
-    stopInputActivityMonitor();
+    const ageMs = clock.now() - pendingReminder.pendingSince;
+    if (ageMs > MAX_PENDING_REMINDER_AGE_MS) {
+      await restoreOriginalState();
+      return true;
+    }
 
-    if (configuredLeds.length === 0) {
+    const reminder = pendingReminder.descriptor;
+    pendingReminder = null;
+
+    const replayDescriptor = createEffectDescriptor(
+      reminder.state,
+      reminder.animationName,
+      reminder.animation,
+      reminder.configuredLeds,
+      minimumReminderMs(reminder.state),
+    );
+
+    await startSustainedEffect(replayDescriptor, false);
+    return true;
+  }
+
+  async function finishVisibleEffect(version: number, descriptor: EffectDescriptor): Promise<void> {
+    if (version !== effectVersion || currentEffect !== descriptor) {
+      return;
+    }
+
+    if (status.effectSuppressed && canDeferReminder(descriptor.state)) {
+      pendingReminder = {
+        descriptor,
+        pendingSince: clock.now(),
+      };
+      activeController = null;
+      activeTask = null;
       status = {
         ...status,
-        state,
-        activeAnimation: null,
-        ttlRemainingMs: ttlMs,
-        effectSuppressed: false,
-        originalLockStateCaptured: false,
+        ttlRemainingMs: 0,
+        pendingReminder: true,
       };
       return;
     }
 
-    const snapshot = await captureOriginalLockState();
-    if (!snapshot) {
+    clearActiveEffect();
+  }
+
+  async function startLeaseOnlyEffect(version: number, descriptor: EffectDescriptor): Promise<void> {
+    if (descriptor.ttlMs === 0) {
+      activeTask = Promise.resolve();
       return;
     }
 
-    status = {
-      ...status,
-      state,
-      configuredLeds: [...configuredLeds],
-      activeAnimation: animationName,
-      ttlRemainingMs: ttlMs,
-      effectSuppressed: false,
-      lastError: null,
-    };
-
-    const controller = new AbortController();
-    activeController = controller;
-    startInputActivityMonitor(version, configuredLeds);
-    activeTask = runEffectLoop({
-      driver: options.driver,
-      state,
-      animation,
-      configuredLeds,
-      originalLockState: snapshot,
-      ttlMs,
-      clock,
-      signal: controller.signal,
-      isSuppressed: () => status.effectSuppressed,
-    })
+    activeTask = clock
+      .sleep(descriptor.ttlMs)
       .then(() => {
-        if (version !== effectVersion) {
+        if (version !== effectVersion || currentEffect !== descriptor) {
           return;
         }
 
@@ -207,20 +338,83 @@ export function createLumosDaemon(options: LumosDaemonOptions) {
       });
   }
 
+  async function startSustainedEffect(descriptor: EffectDescriptor, initiallySuppressed = false) {
+    effectVersion += 1;
+    const version = effectVersion;
+
+    activeController?.abort();
+    stopInputActivityMonitor();
+    pendingReminder = null;
+    currentEffect = descriptor;
+
+    try {
+      if (descriptor.configuredLeds.length === 0) {
+        syncActiveStatus(descriptor, initiallySuppressed, null);
+        activeController = null;
+        await startLeaseOnlyEffect(version, descriptor);
+        return;
+      }
+
+      const snapshot = await captureOriginalLockState(version);
+      if (version !== effectVersion || currentEffect !== descriptor) {
+        return;
+      }
+
+      if (!snapshot) {
+        return;
+      }
+
+      syncActiveStatus(descriptor, initiallySuppressed, descriptor.animationName);
+
+      const controller = new AbortController();
+      activeController = controller;
+      startInputActivityMonitor(version, descriptor.configuredLeds);
+      activeTask = runEffectLoop({
+        driver: options.driver,
+        state: descriptor.state,
+        animation: descriptor.animation,
+        configuredLeds: descriptor.configuredLeds,
+        originalLockState: snapshot,
+        ttlMs: descriptor.ttlMs,
+        clock,
+        signal: controller.signal,
+        isSuppressed: () => status.effectSuppressed,
+      })
+        .then(async () => {
+          await finishVisibleEffect(version, descriptor);
+        })
+        .catch((error: unknown) => {
+          settleFailure(version, error);
+        });
+    } catch (error) {
+      settleFailure(version, error);
+    }
+  }
+
   async function restoreOriginalState() {
     activeController?.abort();
     stopInputActivityMonitor();
     effectVersion += 1;
+    const version = effectVersion;
+    const snapshot = originalLockState === null ? null : cloneLockState(originalLockState);
 
-    if (originalLockState !== null) {
+    if (snapshot !== null) {
       try {
-        await options.driver.setState(cloneLockState(originalLockState));
+        await options.driver.setState(snapshot);
       } catch (error) {
+        if (version !== effectVersion) {
+          return;
+        }
+
         status = {
           ...status,
           lastError: toErrorMessage(error),
         };
       }
+    }
+
+    if (version !== effectVersion) {
+      return;
     }
 
     clearActiveEffect();
@@ -255,7 +449,8 @@ export function createLumosDaemon(options: LumosDaemonOptions) {
         throw new Error(`Missing config for state: ${state}`);
       }
 
-      await startSustainedEffect(state, animationName, animation, configuredLeds, ttlMs);
+      const descriptor = createEffectDescriptor(state, animationName, animation, configuredLeds, ttlMs);
+      await startSustainedEffect(descriptor, status.effectSuppressed);
     },
 
     async pokeLed(led: LedName) {
@@ -273,6 +468,8 @@ export function createLumosDaemon(options: LumosDaemonOptions) {
     getStatus(): LumosStatus {
       return {
         ...status,
+        ttlRemainingMs: getRemainingTtlMs(),
+        pendingReminder: pendingReminder !== null,
         configuredLeds: [...status.configuredLeds],
       };
     },

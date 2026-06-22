@@ -1,6 +1,6 @@
 # AgentLumos Windows Manual Test
 
-Use this checklist on a real Windows machine before calling V0.1 ready.
+Use this checklist on a real Windows machine before calling v0.2.1 ready.
 
 ## Prerequisites
 
@@ -92,7 +92,28 @@ Confirm:
 - `error` shows a more prominent failure animation.
 - `off` restores the original Lock state.
 
-## 4. Direct LED poke test
+## 4. Lease and suppression test
+
+```powershell
+# Show a long-lived active lease.
+lumos active --ttl 10m
+
+# Show short-lived notification states.
+lumos blocked --ttl 5s
+lumos success --ttl 5s
+lumos error --ttl 5s
+
+# Clear the current state and any pending reminder.
+lumos off
+```
+
+Confirm:
+
+- `active` renews when the matching hook fires again and does not replay after expiry.
+- `blocked`, `success`, and `error` can replay once after the keyboard becomes idle if they expired while you were typing.
+- `lumos off` clears both the visible state and any pending reminder.
+
+## 5. Direct LED poke test
 
 ```powershell
 # Toggle Caps Lock once, like a manual key press.
@@ -107,7 +128,7 @@ lumos poke scroll
 
 Confirm each available Lock LED toggles directly.
 
-## 5. Daemon test
+## 6. Daemon test
 
 ```powershell
 # Stop the background daemon.
@@ -119,7 +140,7 @@ lumos daemon restart
 
 Confirm the daemon stops and comes back cleanly.
 
-## 6. Hook test
+## 7. Hook test
 
 ```powershell
 # Print hook integration config.
@@ -148,7 +169,7 @@ Confirm:
 - `hook install` reports installed handlers and the target config path.
 - `hook uninstall` reports removed handlers.
 
-## 7. Final status
+## 8. Final status
 
 ```powershell
 # Print the final daemon status.

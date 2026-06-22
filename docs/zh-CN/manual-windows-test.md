@@ -46,7 +46,28 @@ lumos demo
 - `lumos demo` 是否能驱动键盘指示灯变化。
 - `lumos config clean` 是否删除旧配置并让下次启动回到默认值。
 
-## 4. 手动状态测试
+## 4. 租约与静音测试
+
+```powershell
+# 显示一个较长的 active 租约。
+lumos active --ttl 10m
+
+# 显示短 TTL 的状态。
+lumos blocked --ttl 5s
+lumos success --ttl 5s
+lumos error --ttl 5s
+
+# 清除当前状态和任何待回放提醒。
+lumos off
+```
+
+重点观察：
+
+- `active` 在对应 hook 再次到来时会续租，过期后不会再回放。
+- `blocked`、`success`、`error` 如果在你输入时过期，等输入空闲后最多会回放一次。
+- `lumos off` 会同时清除可见状态和待回放状态。
+
+## 5. 手动状态测试
 
 先配置可用灯的顺序：
 
@@ -92,7 +113,7 @@ lumos off
 - `error` 是否是更醒目的失败提示。
 - `off` 是否恢复到原始 Lock 状态。
 
-## 5. Hook 测试
+## 6. Hook 测试
 
 ```powershell
 # 检查 hook 接入状态。
@@ -120,7 +141,7 @@ lumos hook uninstall claude-code
 - `hook install` 是否写入目标工具的 hook 配置。
 - `hook uninstall` 是否移除 AgentLumos 管理的 hook 配置。
 
-## 6. 常见问题
+## 7. 常见问题
 
 - 如果动画亮了但键盘灯没有变化，先确认是否是笔记本内置键盘、外接键盘，或者驱动不支持该灯。
 - 如果某个灯顺序不对，先修正 `lumos config set leds ...`。

@@ -8,6 +8,7 @@ export function createIdleStatus(driverName: string, configuredLeds: readonly Le
     activeAnimation: null,
     ttlRemainingMs: null,
     effectSuppressed: false,
+    pendingReminder: false,
     originalLockStateCaptured: false,
     driver: driverName,
     lastError: null,

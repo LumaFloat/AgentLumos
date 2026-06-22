@@ -60,6 +60,7 @@ export interface LumosStatus {
   activeAnimation: AnimationName | null;
   ttlRemainingMs: number | null;
   effectSuppressed: boolean;
+  pendingReminder: boolean;
   originalLockStateCaptured: boolean;
   driver: string;
   lastError: string | null;

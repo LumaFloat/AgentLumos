@@ -32,10 +32,10 @@ const DEFAULT_CONFIG: LumosConfig = {
   leds: ["num", "caps", "scroll"],
   defaultTtl: "30m",
   states: {
-    active: { animation: "chase-rider", ttl: "0" },
-    blocked: { animation: "prompt-shift", ttl: "15s" },
-    success: { animation: "embrace-confirm", ttl: "8s" },
-    error: { animation: "alert-triple", ttl: "12s" },
+    active: { animation: "chase-rider", ttl: "10m" },
+    blocked: { animation: "prompt-shift", ttl: "60s" },
+    success: { animation: "embrace-confirm", ttl: "10s" },
+    error: { animation: "alert-triple", ttl: "20s" },
   },
   animations: {
     "chase-rider": {
@@ -213,6 +213,10 @@ function normalizeLeds(value: unknown): LedName[] {
 
   if (!Array.isArray(value)) {
     throw new Error("Config leds must be an array.");
+  }
+
+  if (value.length === 0) {
+    throw new Error("Config leds must include at least one LED: caps, num, or scroll.");
   }
 
   const leds: LedName[] = [];

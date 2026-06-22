@@ -29,6 +29,7 @@ error    [123] [---]         任务失败
 - **初始方案不需要额外硬件**：复用许多键盘自带的 Lock 指示灯。
 - **自动恢复状态**：执行动画前记录原始 Lock 状态，动画结束后恢复。
 - **操作时临时静音**：你开始打字或点击/拖拽鼠标时，LED 动画会暂时静音并恢复原始 Lock 状态；停止操作几秒后，如果 agent 状态仍有效，动画会继续。
+- **状态租约**：`active` 默认拥有 10 分钟租约，并会在新 hook 到来时续租；`blocked`、`success`、`error` 的默认 TTL 分别是 60 秒、10 秒和 20 秒，避免旧状态长时间残留。
 - **可配置**：可以配置 LED 顺序、状态 TTL、动画和 hook 映射。
 - **Windows 原生**：使用当前 Windows 键盘 Lock 行为。
 
@@ -148,7 +149,15 @@ lumos hook install claude-code
 | `animations` | 可复用的 LED 动画定义。 |
 | `hookIntegrations` | Agent hook 事件到 AgentLumos 状态的映射。 |
 
-`lumos status` 中的 `effectSuppressed` 表示当前逻辑状态仍然存在，但因为检测到键盘或鼠标按钮操作，LED 动画正在临时静音。鼠标移动和滚轮暂不触发静音。
+`lumos status` 中的 `effectSuppressed` 表示当前逻辑状态仍然存在，但因为检测到键盘或鼠标按钮操作，LED 动画正在临时静音。`pendingReminder` 表示最新的有限期 `blocked`、`success` 或 `error` 状态在静音期间已经过期，正在等待输入空闲后重新显示。鼠标移动和滚轮暂不触发静音。
+
+租约行为：
+
+- `active` 会在每次匹配的 hook 到来时续租，过期后不会回放。
+- `blocked`、`success` 和 `error` 在静音期间会保留最新状态，空闲后最多回放一次。
+- 延后回放的最短显示时间分别是：`blocked` 5 秒、`success` 3 秒、`error` 5 秒。
+- 延迟超过 5 分钟的待回放提醒会被丢弃。
+- `lumos off` 会清除当前可见状态和待回放状态。
 
 使用 `lumos config clean` 可以删除当前配置，并让 AgentLumos 在下次启动时重新生成默认配置。
 
