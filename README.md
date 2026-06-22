@@ -14,10 +14,10 @@ AgentLumos shows the runtime state of AI coding agents. The initial feature set 
 It does not wrap your agent, replace your terminal, or add another screen overlay. It listens to native hook events and plays short LED animations so you can tell, from your peripheral vision, whether the agent is working, blocked, done, or failed.
 
 ```text
-active   [1..] [..2] [3..]   agent is working
-blocked  [12.] [.23]         waiting for input or permission
-success  [1.3] [.2.]         task completed
-error    [123] [---]         task failed
+active   [●○○] [○●○] [○○●]   agent is working
+blocked  [●●○] [○●●] [●○●]   waiting for input or permission
+success  [○●○] [●●●] [○●○]   task completed
+error    [●●●] [○○○] [●●●]   task failed
 ```
 
 ## Why "Lumos"?
