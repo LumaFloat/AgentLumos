@@ -1,5 +1,7 @@
 # AgentLumos
 
+[English](README.md) | 简体中文
+
 > 面向 AI 编码代理的运行状态提示工具。
 
 [![npm](https://img.shields.io/npm/v/agentlumos.svg)](https://www.npmjs.com/package/agentlumos)

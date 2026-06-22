@@ -1,5 +1,7 @@
 # AgentLumos
 
+English | [简体中文](README.zh-CN.md)
+
 > Status indicators for AI coding agents.
 
 [![npm](https://img.shields.io/npm/v/agentlumos.svg)](https://www.npmjs.com/package/agentlumos)
