@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4.svg)](#platform-and-hardware-support)
 
-AgentLumos shows the runtime state of AI coding agents. V0.1 turns the Caps Lock, Num Lock, and Scroll Lock LEDs on a physical keyboard into a small status display for tools like Codex and Claude Code.
+AgentLumos shows the runtime state of AI coding agents. The initial feature set turns the Caps Lock, Num Lock, and Scroll Lock LEDs on a physical keyboard into a small status display for tools like Codex and Claude Code.
 
 It does not wrap your agent, replace your terminal, or add another screen overlay. It listens to native hook events and plays short LED animations so you can tell, from your peripheral vision, whether the agent is working, blocked, done, or failed.
 
@@ -26,11 +26,11 @@ error    [123] [---]         task failed
 
 - **Ambient feedback**: see agent state without keeping the terminal in focus.
 - **Hook driven**: maps Codex and Claude Code hook events to LED states.
-- **No extra hardware for V0.1**: uses the Lock indicator LEDs already on many keyboards.
+- **No extra hardware for the initial setup**: uses the Lock indicator LEDs already on many keyboards.
 - **Restores state**: captures the original Lock state and restores it after animations.
-- **Quiet while typing**: temporarily suppresses LED animations while you type, restores the original Lock state, and resumes after a short idle window if the agent state is still active.
+- **Quiet while interacting**: temporarily suppresses LED animations while you type or click/drag the mouse, restores the original Lock state, and resumes after a short idle window if the agent state is still active.
 - **Configurable**: choose LED order, state TTLs, animations, and hook mappings.
-- **Windows native**: uses the current Windows keyboard Lock behavior in V0.1.
+- **Windows native**: uses the current Windows keyboard Lock behavior.
 
 ## Install
 
@@ -148,13 +148,13 @@ Important fields:
 | `animations` | Reusable LED animation definitions. |
 | `hookIntegrations` | Agent hook event to AgentLumos state mappings. |
 
-In `lumos status`, `effectSuppressed` means the logical state is still active, but LED animation is temporarily quiet because keyboard input was detected.
+In `lumos status`, `effectSuppressed` means the logical state is still active, but LED animation is temporarily quiet because keyboard or mouse-button activity was detected. Mouse movement and wheel scrolling are not used for suppression.
 
 Use `lumos config clean` to remove the current config and let AgentLumos regenerate the default config on the next launch.
 
 ## Platform and Hardware Support
 
-V0.1 is Windows-first. The current driver targets keyboard Lock LEDs through Windows input behavior.
+AgentLumos is currently Windows-first. The current driver targets keyboard Lock LEDs through Windows input behavior.
 
 Linux and macOS support are not implemented yet. Some keyboards, laptop firmware, KVMs, remote desktops, and vendor utilities may expose Lock state differently or not expose visible Lock LEDs at all.
 

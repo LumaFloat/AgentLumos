@@ -8,9 +8,10 @@ const VK_XBUTTON2 = 0x06;
 const VK_CAPITAL = 0x14;
 const VK_NUMLOCK = 0x90;
 const VK_SCROLL = 0x91;
-const FIRST_KEYBOARD_VK = 0x08;
+const FIRST_INPUT_VK = VK_LBUTTON;
 const LAST_VK = 0xfe;
 const KEY_PRESSED_SINCE_LAST_CALL = 0x0001;
+const KEY_CURRENTLY_DOWN = 0x8000;
 const DEFAULT_POLL_MS = 50;
 const LED_VIRTUAL_KEYS: Record<LedName, number> = {
   caps: VK_CAPITAL,
@@ -42,7 +43,7 @@ function getWin32InputApi(): Win32InputApi {
 }
 
 function isIgnoredVirtualKey(vKey: number, ignoredLedKeys: ReadonlySet<number>): boolean {
-  return (vKey >= VK_LBUTTON && vKey <= VK_XBUTTON2) || ignoredLedKeys.has(vKey);
+  return ignoredLedKeys.has(vKey);
 }
 
 function toIgnoredLedKeys(ignoredLeds: readonly LedName[] = []): ReadonlySet<number> {
@@ -52,12 +53,13 @@ function toIgnoredLedKeys(ignoredLeds: readonly LedName[] = []): ReadonlySet<num
 function hasKeyboardActivity(api: Win32InputApi, ignoredLeds: readonly LedName[] = []): boolean {
   const ignoredLedKeys = toIgnoredLedKeys(ignoredLeds);
 
-  for (let vKey = FIRST_KEYBOARD_VK; vKey <= LAST_VK; vKey += 1) {
+  for (let vKey = FIRST_INPUT_VK; vKey <= LAST_VK; vKey += 1) {
     if (isIgnoredVirtualKey(vKey, ignoredLedKeys)) {
       continue;
     }
 
-    if ((api.getAsyncKeyState(vKey) & KEY_PRESSED_SINCE_LAST_CALL) !== 0) {
+    const keyState = api.getAsyncKeyState(vKey);
+    if ((keyState & KEY_PRESSED_SINCE_LAST_CALL) !== 0 || (keyState & KEY_CURRENTLY_DOWN) !== 0) {
       return true;
     }
   }
