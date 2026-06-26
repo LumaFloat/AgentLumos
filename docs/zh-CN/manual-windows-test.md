@@ -36,26 +36,26 @@ lumos config get
 # 删除配置文件，让下次启动重新生成默认配置。
 lumos config clean
 
-# 播放内置动画，确认键盘灯是否响应。
-lumos demo
+# 预览内置动画，确认键盘灯是否响应。
+lumos show
 ```
 
 重点观察：
 
 - `lumos status` 是否稳定返回当前状态对象。
-- `lumos demo` 是否能驱动键盘指示灯变化。
+- `lumos show` 是否能驱动键盘指示灯变化。
 - `lumos config clean` 是否删除旧配置并让下次启动回到默认值。
 
 ## 4. 租约与静音测试
 
 ```powershell
-# 显示一个较长的 active 租约。
-lumos active --ttl 10m
+# 设置一个较长的 active 租约。
+lumos set active --ttl 10m
 
-# 显示短 TTL 的状态。
-lumos blocked --ttl 5s
-lumos success --ttl 5s
-lumos error --ttl 5s
+# 设置短 TTL 的状态。
+lumos set blocked --ttl 5s
+lumos set success --ttl 5s
+lumos set error --ttl 5s
 
 # 清除当前状态和任何待回放提醒。
 lumos off
@@ -89,17 +89,17 @@ lumos config set leds caps,num
 然后依次执行：
 
 ```powershell
-# 显示 active 动画。
-lumos active
+# 预览 active 动画。
+lumos show active
 
-# 显示 blocked 动画。
-lumos blocked
+# 预览 blocked 动画。
+lumos show blocked
 
-# 显示 success 动画。
-lumos success
+# 预览 success 动画。
+lumos show success
 
-# 显示 error 动画。
-lumos error
+# 预览 error 动画。
+lumos show error
 
 # 停止动画并恢复原始 Lock 状态。
 lumos off

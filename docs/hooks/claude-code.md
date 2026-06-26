@@ -1,18 +1,18 @@
 # Claude Code Hook Integration
 
-AgentLumos does not wrap or replace the `claude` command. Claude Code keeps its normal launch flow, and native Claude Code hooks call `lumos` state commands.
+AgentLumos does not wrap or replace the `claude` command. Claude Code keeps its normal launch flow, and native Claude Code hooks call `lumos set` state commands.
 
 ## Default Mapping
 
 ```text
-SessionStart       -> lumos active
-UserPromptSubmit   -> lumos active
-PreToolUse         -> lumos active
-PostToolUseFailure -> lumos error
-PermissionRequest  -> lumos blocked
-Notification       -> lumos blocked
-Stop               -> lumos success
-StopFailure        -> lumos error
+SessionStart       -> lumos set active
+UserPromptSubmit   -> lumos set active
+PreToolUse         -> lumos set active
+PostToolUseFailure -> lumos set error
+PermissionRequest  -> lumos set blocked
+Notification       -> lumos set blocked
+Stop               -> lumos set success
+StopFailure        -> lumos set error
 SessionEnd         -> lumos off
 ```
 

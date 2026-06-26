@@ -60,8 +60,8 @@ Run these commands from PowerShell:
 # Check daemon status and current LED state.
 lumos status
 
-# Play built-in animations.
-lumos demo
+# Preview the built-in animation sequence.
+lumos show
 
 # Set the physical LED order from left to right.
 lumos config set leds num,caps,scroll
@@ -80,7 +80,7 @@ The main AgentLumos flow is: configure the visible Lock LEDs on your keyboard, t
 
 ### 1. Configure Your Keyboard LEDs
 
-First run `lumos demo` to see which lights move, then run `lumos config set leds ...` to match the physical LED order from left to right.
+First run `lumos show` to see which lights move, then run `lumos config set leds ...` to match the physical LED order from left to right.
 
 If your keyboard exposes fewer Lock LEDs, configure only the usable ones:
 
@@ -147,14 +147,14 @@ Read the setup guides:
 These commands are mainly for checking effects or diagnosing problems. They are not the normal daily entry point for using AgentLumos:
 
 ```powershell
-# Play built-in animations to check whether LEDs are controllable.
-lumos demo
+# Preview built-in animations to check whether LEDs are controllable.
+lumos show
 
 # Manually show short states to check animation behavior.
-lumos active --ttl 5
-lumos blocked --ttl 5
-lumos success
-lumos error
+lumos show active
+lumos show blocked
+lumos show success
+lumos show error
 
 # Test one LED directly.
 lumos test caps
@@ -171,7 +171,7 @@ lumos config clean
 
 ## CLI
 
-Run `lumos help` to see commands, arguments, and options. The CLI supports state, diagnostic, daemon, config, and hook commands. Command mistakes print concise messages without JavaScript stack traces.
+Run `lumos help` to see commands, arguments, and options. The CLI supports preview, state, diagnostic, daemon, config, and hook commands. Command mistakes print concise messages without JavaScript stack traces.
 
 See the [CLI reference](docs/cli.md) for command details, exit codes, and platform behavior.
 

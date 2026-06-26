@@ -21,6 +21,8 @@ import { formatJson, formatWarning } from "./format";
 
 const DAEMON_START_RETRY_COUNT = 20;
 const DAEMON_START_RETRY_DELAY_MS = 100;
+const SHOW_STATE_TTL_MS = 2_000;
+const ACTIVE_STATES = ["active", "blocked", "success", "error"] as const;
 
 export const CLI_EXIT = {
   SUCCESS: 0,
@@ -172,6 +174,14 @@ function buildStateRequest(state: Exclude<LumosState, "idle">, options: StateCom
   };
 }
 
+function buildShowStateRequest(state: Exclude<LumosState, "idle">): DaemonRequest {
+  return {
+    type: "setState",
+    state,
+    ttlMs: SHOW_STATE_TTL_MS,
+  };
+}
+
 function rejectDuplicateOptions(argv: string[], flags: string[]): void {
   for (const flag of flags) {
     const count = argv.filter((arg) => arg === flag || arg.startsWith(`${flag}=`)).length;
@@ -224,6 +234,22 @@ function parseHookIntegrationName(value: string): HookIntegrationName {
   throw new CliUsageError(`Invalid hook target: ${value}`);
 }
 
+function parseActiveState(value: string): Exclude<LumosState, "idle"> {
+  if ((ACTIVE_STATES as readonly string[]).includes(value)) {
+    return value as Exclude<LumosState, "idle">;
+  }
+
+  throw new CliUsageError(`Invalid state: ${value}`);
+}
+
+function parseShowState(value: string | undefined): Exclude<LumosState, "idle"> | null {
+  if (!value) {
+    return null;
+  }
+
+  return parseActiveState(value);
+}
+
 function setDaemonRequest(
   setOperation: (operation: CliOperation) => void,
   request: DaemonRequest,
@@ -263,18 +289,30 @@ function createProgram(setOperation: (operation: CliOperation) => void, deps: Cl
       setOperation({ kind: "help" });
     });
 
-  for (const state of ["active", "blocked", "success", "error"] as const) {
-    program
-      .command(state)
-      .description(`Show ${state} state.`)
-      .allowExcessArguments(false)
-      .option("--ttl <duration>", "state TTL")
-      .option("--leds <list>", "runtime LED list")
-      .option("--animation <name>", "runtime animation name")
-      .action((options: StateCommandOptions) => {
-        setDaemonRequest(setOperation, buildStateRequest(state, options), { retryOnConnectFailure: true });
-      });
-  }
+  program
+    .command("show [state]")
+    .description("Preview LED effects.")
+    .allowExcessArguments(false)
+    .action((state?: string) => {
+      const parsedState = parseShowState(state);
+      if (parsedState) {
+        setDaemonRequest(setOperation, buildShowStateRequest(parsedState), { retryOnConnectFailure: true });
+        return;
+      }
+
+      setDaemonRequest(setOperation, { type: "runDemo" }, { retryOnConnectFailure: true });
+    });
+
+  program
+    .command("set <state>")
+    .description("Set agent state for hooks or scripts.")
+    .allowExcessArguments(false)
+    .option("--ttl <duration>", "state TTL")
+    .option("--leds <list>", "runtime LED list")
+    .option("--animation <name>", "runtime animation name")
+    .action((state: string, options: StateCommandOptions) => {
+      setDaemonRequest(setOperation, buildStateRequest(parseActiveState(state), options), { retryOnConnectFailure: true });
+    });
 
   program
     .command("off")
@@ -303,14 +341,6 @@ function createProgram(setOperation: (operation: CliOperation) => void, deps: Cl
         retryOnConnectFailure: true,
         afterResponse: (response) => formatJson((response as Extract<DaemonResponse, { ok: true }>).data),
       });
-    });
-
-  program
-    .command("demo")
-    .description("Run the built-in LED demo.")
-    .allowExcessArguments(false)
-    .action(() => {
-      setDaemonRequest(setOperation, { type: "runDemo" }, { retryOnConnectFailure: true });
     });
 
   const daemon = program.command("daemon").description("Manage the AgentLumos daemon.");
@@ -397,8 +427,8 @@ async function parseOperation(argv: string[], deps: CliDeps): Promise<CliOperati
     return { kind: "help" };
   }
 
-  if (["active", "blocked", "success", "error"].includes(argv[0] ?? "")) {
-    rejectDuplicateOptions(argv.slice(1), ["--ttl", "--leds", "--animation"]);
+  if (argv[0] === "set") {
+    rejectDuplicateOptions(argv.slice(2), ["--ttl", "--leds", "--animation"]);
   }
 
   try {
@@ -600,7 +630,7 @@ function getInstalledAgentLumosEvents(document: NativeHookDocument): {
 }
 
 function lumosCommandForState(state: LumosState): string {
-  return state === "idle" ? "lumos off" : `lumos ${state}`;
+  return state === "idle" ? "lumos off" : `lumos set ${state}`;
 }
 
 function commandExists(command: string): boolean {

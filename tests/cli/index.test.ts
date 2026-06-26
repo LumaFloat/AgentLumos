@@ -57,7 +57,8 @@ describe("runCli", () => {
 
     expect(exitCode).toBe(0);
     expect(stdout.join("")).toContain("Usage:");
-    expect(stdout.join("")).toContain("active");
+    expect(stdout.join("")).toContain("show");
+    expect(stdout.join("")).toContain("set");
   });
 
   it.each([
@@ -78,14 +79,16 @@ describe("runCli", () => {
 
     expect(exitCode).toBe(0);
     expect(stdout.join("")).toContain("Usage:");
-    expect(stdout.join("")).toContain("active");
+    expect(stdout.join("")).toContain("show");
+    expect(stdout.join("")).toContain("set");
     expect(stdout.join("")).toContain("hook");
   });
 
   it.each([
-    [["active", "--wat"], "unknown option"],
-    [["active", "--ttl"], "argument missing"],
-    [["active", "--ttl", "5s", "--ttl", "6s"], "Duplicate option: --ttl"],
+    [["set", "active", "--wat"], "unknown option"],
+    [["set", "active", "--ttl"], "argument missing"],
+    [["set", "active", "--ttl", "5s", "--ttl", "6s"], "Duplicate option: --ttl"],
+    [["show", "idle"], "Invalid state: idle"],
     [["off", "extra"], "too many arguments"],
     [["status", "--json"], "unknown option"],
     [["poke", "caps", "num"], "too many arguments"],
@@ -160,7 +163,7 @@ describe("runCli", () => {
   ] as const)("rejects physical LED commands on %s", async (platform, displayName) => {
     const stderr: string[] = [];
 
-    const exitCode = await runCli(["active"], {
+    const exitCode = await runCli(["set", "active"], {
       platform,
       createClient: () => {
         throw new Error("should not connect");
@@ -196,9 +199,9 @@ describe("runCli", () => {
     expect(stdout.join("")).toContain("Usage:");
   });
 
-  it("sends active as a setState request", async () => {
+  it("sends set active as a setState request", async () => {
     const clientFactory = createClientFactory([{ ok: true }]);
-    const exitCode = await runCli(["active"], {
+    const exitCode = await runCli(["set", "active"], {
       platform: "win32",
       createClient: clientFactory.createClient,
       spawnDaemon: async () => {},
@@ -215,6 +218,7 @@ describe("runCli", () => {
   it("sends runtime overrides ahead of config", async () => {
     const clientFactory = createClientFactory([{ ok: true }]);
     const exitCode = await runCli([
+      "set",
       "active",
       "--ttl",
       "5s",
@@ -246,7 +250,7 @@ describe("runCli", () => {
 
   it("treats ttl zero as an infinite request", async () => {
     const clientFactory = createClientFactory([{ ok: true }]);
-    const exitCode = await runCli(["active", "--ttl", "0"], {
+    const exitCode = await runCli(["set", "active", "--ttl", "0"], {
       platform: "win32",
       createClient: clientFactory.createClient,
       spawnDaemon: async () => {},
@@ -262,6 +266,36 @@ describe("runCli", () => {
         ttlMs: 0,
         overrides: undefined,
       },
+    ]);
+  });
+
+  it("runs the built-in preview sequence with show", async () => {
+    const clientFactory = createClientFactory([{ ok: true }]);
+    const exitCode = await runCli(["show"], {
+      platform: "win32",
+      createClient: clientFactory.createClient,
+      spawnDaemon: async () => {},
+      stdout: { write: async () => true },
+      stderr: { write: async () => true },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(clientFactory.requests).toEqual([{ type: "runDemo" }]);
+  });
+
+  it("previews one state with show", async () => {
+    const clientFactory = createClientFactory([{ ok: true }]);
+    const exitCode = await runCli(["show", "blocked"], {
+      platform: "win32",
+      createClient: clientFactory.createClient,
+      spawnDaemon: async () => {},
+      stdout: { write: async () => true },
+      stderr: { write: async () => true },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(clientFactory.requests).toEqual([
+      { type: "setState", state: "blocked", ttlMs: 2_000 },
     ]);
   });
 
@@ -343,7 +377,7 @@ describe("runCli", () => {
 
   it("sends blocked requests", async () => {
     const blockedClient = createClientFactory([{ ok: true }]);
-    const blockedExit = await runCli(["blocked"], {
+    const blockedExit = await runCli(["set", "blocked"], {
       platform: "win32",
       createClient: blockedClient.createClient,
       spawnDaemon: async () => {},
@@ -491,7 +525,7 @@ describe("runCli", () => {
             Stop: [
               {
                 hooks: [
-                  { type: "command", command: "lumos success", statusMessage: "AgentLumos: success" },
+                  { type: "command", command: "lumos set success", statusMessage: "AgentLumos: success" },
                   { type: "command", command: "echo keep", statusMessage: "Keep me" },
                 ],
               },
@@ -539,7 +573,7 @@ describe("runCli", () => {
     const codexHooks = Object.fromEntries(
       Object.entries(config.hookIntegrations.codex.hooks).map(([eventName, state]) => [
         eventName,
-        [{ hooks: [{ type: "command", command: `lumos ${state}`, statusMessage: `AgentLumos: ${state}` }] }],
+        [{ hooks: [{ type: "command", command: state === "idle" ? "lumos off" : `lumos set ${state}`, statusMessage: `AgentLumos: ${state}` }] }],
       ]),
     );
     fs.writeFileSync(

@@ -10,11 +10,9 @@ Use `lumos help`, `lumos --help`, or `lumos -h` to print the available commands 
 | --- | --- |
 | `lumos help` | Show commands, arguments, and options. |
 | `lumos status` | Show daemon state, selected LEDs, current animation, TTL, driver, and last error. |
-| `lumos demo` | Play the built-in demo sequence. |
-| `lumos active [--ttl <duration>] [--leds <list>] [--animation <name>]` | Show the agent working state. |
-| `lumos blocked [--ttl <duration>] [--leds <list>] [--animation <name>]` | Show the waiting-for-user state. |
-| `lumos success [--ttl <duration>] [--leds <list>] [--animation <name>]` | Show the completion state. |
-| `lumos error [--ttl <duration>] [--leds <list>] [--animation <name>]` | Show the failure state. |
+| `lumos show` | Preview the built-in LED sequence. |
+| `lumos show <state>` | Preview one state effect. `<state>` is `active`, `blocked`, `success`, or `error`. |
+| `lumos set <state> [--ttl <duration>] [--leds <list>] [--animation <name>]` | Set the current agent state for hooks or scripts. `<state>` is `active`, `blocked`, `success`, or `error`. |
 | `lumos off` | Stop the animation and restore the original Lock state. |
 | `lumos poke <led>` | Toggle one LED for diagnostics. |
 | `lumos test <led>` | Toggle one LED for diagnostics. |
@@ -33,7 +31,7 @@ Use `lumos help`, `lumos --help`, or `lumos -h` to print the available commands 
 
 ## Arguments
 
-State commands support these options:
+`lumos set` supports these options:
 
 | Option | Meaning |
 | --- | --- |
@@ -72,8 +70,11 @@ lumos config get
 # Troubleshoot whether the Caps Lock LED is controllable.
 lumos test caps
 
-# Troubleshoot by manually showing blocked state for 10 seconds.
-lumos blocked --ttl 10s
+# Preview the blocked effect.
+lumos show blocked
+
+# Set blocked state from a custom hook for 10 seconds.
+lumos set blocked --ttl 10s
 ```
 
 ## Errors and Exit Codes

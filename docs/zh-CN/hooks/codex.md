@@ -4,12 +4,12 @@ AgentLumos 不会包装或替换 `codex`。它只把 Codex 的原生 hooks 映�
 
 ## 默认映射
 
-- `SessionStart` -> `lumos active`
-- `UserPromptSubmit` -> `lumos active`
-- `PreToolUse` -> `lumos active`
-- `PostToolUse` -> `lumos active`
-- `PermissionRequest` -> `lumos blocked`
-- `Stop` -> `lumos success`
+- `SessionStart` -> `lumos set active`
+- `UserPromptSubmit` -> `lumos set active`
+- `PreToolUse` -> `lumos set active`
+- `PostToolUse` -> `lumos set active`
+- `PermissionRequest` -> `lumos set blocked`
+- `Stop` -> `lumos set success`
 
 当前不提供“推理中”这类单独状态，因为 Codex 暴露的稳定 hook 里没有对应的通用事件。
 

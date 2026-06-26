@@ -10,11 +10,9 @@
 | --- | --- |
 | `lumos help` | 显示命令、参数和选项。 |
 | `lumos status` | 查看 daemon 状态、已配置 LED、当前动画、TTL、驱动和最近错误。 |
-| `lumos demo` | 播放内置演示动画。 |
-| `lumos active [--ttl <duration>] [--leds <list>] [--animation <name>]` | 显示 agent 工作中状态。 |
-| `lumos blocked [--ttl <duration>] [--leds <list>] [--animation <name>]` | 显示等待用户输入状态。 |
-| `lumos success [--ttl <duration>] [--leds <list>] [--animation <name>]` | 显示完成状态。 |
-| `lumos error [--ttl <duration>] [--leds <list>] [--animation <name>]` | 显示失败状态。 |
+| `lumos show` | 预览内置 LED 动画序列。 |
+| `lumos show <state>` | 预览一个状态灯效。`<state>` 可选 `active`、`blocked`、`success`、`error`。 |
+| `lumos set <state> [--ttl <duration>] [--leds <list>] [--animation <name>]` | 为 hook 或脚本设置当前 agent 状态。`<state>` 可选 `active`、`blocked`、`success`、`error`。 |
 | `lumos off` | 停止动画并恢复原始 Lock 状态。 |
 | `lumos poke <led>` | 切换一个 LED，用于诊断。 |
 | `lumos test <led>` | 切换一个 LED，用于诊断。 |
@@ -33,7 +31,7 @@
 
 ## 参数
 
-状态命令支持这些可选参数：
+`lumos set` 支持这些可选参数：
 
 | 参数 | 说明 |
 | --- | --- |
@@ -72,8 +70,11 @@ lumos config get
 # 排障时检查 Caps Lock LED 是否可控。
 lumos test caps
 
-# 排障时手动显示 10 秒 blocked 状态。
-lumos blocked --ttl 10s
+# 预览 blocked 灯效。
+lumos show blocked
+
+# 自定义 hook 中设置 10 秒 blocked 状态。
+lumos set blocked --ttl 10s
 ```
 
 ## 错误与退出码

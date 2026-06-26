@@ -60,8 +60,8 @@ npm install -g .
 # 查看 daemon 状态和当前 LED 状态。
 lumos status
 
-# 播放内置动画。
-lumos demo
+# 预览内置动画。
+lumos show
 
 # 设置物理 LED 从左到右的顺序。
 lumos config set leds num,caps,scroll
@@ -80,7 +80,7 @@ AgentLumos 的主要使用路径是：先根据自己的键盘配置可见的 Lo
 
 ### 1. 配置你的键盘灯
 
-先运行 `lumos demo` 看哪些灯会动，再用 `lumos config set leds ...` 设置物理 LED 从左到右的顺序。
+先运行 `lumos show` 看哪些灯会动，再用 `lumos config set leds ...` 设置物理 LED 从左到右的顺序。
 
 如果你的键盘只有一两个可见的 Lock 灯，只配置可用的灯：
 
@@ -147,14 +147,14 @@ lumos hook install claude-code
 这些命令主要用于确认效果或排查问题，不是日常使用 AgentLumos 的主入口：
 
 ```powershell
-# 播放内置动画，检查 LED 是否可控。
-lumos demo
+# 预览内置动画，检查 LED 是否可控。
+lumos show
 
 # 手动显示一个短状态，确认状态动画是否符合预期。
-lumos active --ttl 5
-lumos blocked --ttl 5
-lumos success
-lumos error
+lumos show active
+lumos show blocked
+lumos show success
+lumos show error
 
 # 单独测试一个 LED。
 lumos test caps
@@ -171,7 +171,7 @@ lumos config clean
 
 ## CLI
 
-运行 `lumos help` 查看命令、参数和选项。CLI 支持状态、诊断、daemon、配置和 hook 命令。命令错误会输出简洁信息，不打印 JavaScript stack trace。
+运行 `lumos help` 查看命令、参数和选项。CLI 支持预览、状态、诊断、daemon、配置和 hook 命令。命令错误会输出简洁信息，不打印 JavaScript stack trace。
 
 命令细节、退出码和平台行为请看 [CLI 参考](docs/zh-CN/cli.md)。
 

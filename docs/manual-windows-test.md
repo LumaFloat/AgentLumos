@@ -36,14 +36,14 @@ lumos config get
 # Delete the config file so defaults are regenerated next time.
 lumos config clean
 
-# Play built-in animations to verify LED control.
-lumos demo
+# Preview built-in animations to verify LED control.
+lumos show
 ```
 
 Confirm:
 
 - `lumos status` returns a stable, readable status object.
-- `lumos demo` visibly changes at least one configured keyboard Lock LED.
+- `lumos show` visibly changes at least one configured keyboard Lock LED.
 - `lumos config clean` removes old config so defaults can regenerate.
 
 ## 3. Manual state test
@@ -65,20 +65,20 @@ lumos config set leds caps
 lumos config set leds caps,num
 ```
 
-Run each state command:
+Run each preview command:
 
 ```powershell
-# Show the active animation.
-lumos active
+# Preview the active animation.
+lumos show active
 
-# Show the blocked animation.
-lumos blocked
+# Preview the blocked animation.
+lumos show blocked
 
-# Show the success animation.
-lumos success
+# Preview the success animation.
+lumos show success
 
-# Show the error animation.
-lumos error
+# Preview the error animation.
+lumos show error
 
 # Stop animation and restore the original Lock state.
 lumos off
@@ -95,13 +95,13 @@ Confirm:
 ## 4. Lease and suppression test
 
 ```powershell
-# Show a long-lived active lease.
-lumos active --ttl 10m
+# Set a long-lived active lease.
+lumos set active --ttl 10m
 
-# Show short-lived notification states.
-lumos blocked --ttl 5s
-lumos success --ttl 5s
-lumos error --ttl 5s
+# Set short-lived notification states.
+lumos set blocked --ttl 5s
+lumos set success --ttl 5s
+lumos set error --ttl 5s
 
 # Clear the current state and any pending reminder.
 lumos off
@@ -181,5 +181,5 @@ Confirm the status object is stable and readable.
 ## Notes
 
 - If your keyboard has fewer than three usable LEDs, use `lumos config set leds ...` to declare only the LEDs that visibly respond, in physical left-to-right order.
-- `lumos demo` is the fastest way to learn which Lock indicators your keyboard actually exposes.
+- `lumos show` is the fastest way to learn which Lock indicators your keyboard actually exposes.
 - The project does not promise recovery from process kill, OS crash, or power loss.

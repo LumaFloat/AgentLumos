@@ -1,16 +1,16 @@
 # Codex Hook Integration
 
-AgentLumos does not wrap or replace the `codex` command. Codex keeps its normal launch flow, and native Codex hooks call `lumos` state commands.
+AgentLumos does not wrap or replace the `codex` command. Codex keeps its normal launch flow, and native Codex hooks call `lumos set` state commands.
 
 ## Default Mapping
 
 ```text
-SessionStart      -> lumos active
-UserPromptSubmit  -> lumos active
-PreToolUse        -> lumos active
-PostToolUse       -> lumos active
-PermissionRequest -> lumos blocked
-Stop              -> lumos success
+SessionStart      -> lumos set active
+UserPromptSubmit  -> lumos set active
+PreToolUse        -> lumos set active
+PostToolUse       -> lumos set active
+PermissionRequest -> lumos set blocked
+Stop              -> lumos set success
 ```
 
 Codex does not expose a confirmed stable generic reasoning hook for this use case, so AgentLumos does not define a separate reasoning state.
