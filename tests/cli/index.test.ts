@@ -25,9 +25,181 @@ function createClientFactory(responses: DaemonResponse[]) {
 }
 
 describe("runCli", () => {
+  it("prints a concise error for an unknown command", async () => {
+    const stderr: string[] = [];
+
+    const exitCode = await runCli(["ofF"], {
+      createClient: () => {
+        throw new Error("should not connect");
+      },
+      spawnDaemon: async () => {},
+      stdout: { write: async () => true },
+      stderr: { write: async (chunk: string) => { stderr.push(chunk); } },
+    });
+
+    expect(exitCode).toBe(2);
+    expect(stderr.join("")).toContain("unknown command");
+    expect(stderr.join("")).toContain("ofF");
+    expect(stderr.join("")).not.toContain("at ");
+  });
+
+  it("prints help when no command is provided", async () => {
+    const stdout: string[] = [];
+
+    const exitCode = await runCli([], {
+      createClient: () => {
+        throw new Error("should not connect");
+      },
+      spawnDaemon: async () => {},
+      stdout: { write: async (chunk: string) => { stdout.push(chunk); } },
+      stderr: { write: async () => true },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdout.join("")).toContain("Usage:");
+    expect(stdout.join("")).toContain("active");
+  });
+
+  it.each([
+    [["help"]],
+    [["--help"]],
+    [["-h"]],
+  ])("prints CLI help for %j", async (argv) => {
+    const stdout: string[] = [];
+
+    const exitCode = await runCli(argv, {
+      createClient: () => {
+        throw new Error("should not connect");
+      },
+      spawnDaemon: async () => {},
+      stdout: { write: async (chunk: string) => { stdout.push(chunk); } },
+      stderr: { write: async () => true },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdout.join("")).toContain("Usage:");
+    expect(stdout.join("")).toContain("active");
+    expect(stdout.join("")).toContain("hook");
+  });
+
+  it.each([
+    [["active", "--wat"], "unknown option"],
+    [["active", "--ttl"], "argument missing"],
+    [["active", "--ttl", "5s", "--ttl", "6s"], "Duplicate option: --ttl"],
+    [["off", "extra"], "too many arguments"],
+    [["status", "--json"], "unknown option"],
+    [["poke", "caps", "num"], "too many arguments"],
+    [["daemon", "stop", "extra"], "too many arguments"],
+    [["config", "get", "extra"], "too many arguments"],
+    [["hook", "install", "codex", "extra"], "too many arguments"],
+  ])("rejects invalid arguments for %j", async (argv, expectedMessage) => {
+    const stderr: string[] = [];
+
+    const exitCode = await runCli(argv, {
+      createClient: () => {
+        throw new Error("should not connect");
+      },
+      spawnDaemon: async () => {},
+      stdout: { write: async () => true },
+      stderr: { write: async (chunk: string) => { stderr.push(chunk); } },
+    });
+
+    expect(exitCode).toBe(2);
+    expect(stderr.join("")).toContain(expectedMessage);
+    expect(stderr.join("")).not.toContain("at ");
+  });
+
+  it.each([
+    ["input_error", 2],
+    ["daemon_error", 4],
+    ["ipc_error", 4],
+    ["driver_failed", 5],
+  ])("maps %s responses to exit code %i", async (code, expectedExitCode) => {
+    const stderr: string[] = [];
+    const clientFactory = createClientFactory([
+      { ok: false, code, message: "request failed" },
+    ]);
+
+    const exitCode = await runCli(["status"], {
+      platform: "win32",
+      createClient: clientFactory.createClient,
+      spawnDaemon: async () => {},
+      stdout: { write: async () => true },
+      stderr: { write: async (chunk: string) => { stderr.push(chunk); } },
+    });
+
+    expect(exitCode).toBe(expectedExitCode);
+    expect(stderr.join("")).toContain("request failed");
+  });
+
+  it("prints a concise error when daemon auto-start retries are exhausted", async () => {
+    const stderr: string[] = [];
+
+    const exitCode = await runCli(["status"], {
+      platform: "win32",
+      createClient: () => ({
+        async request() {
+          const error = new Error("connect ECONNREFUSED");
+          (error as { code?: string }).code = "ECONNREFUSED";
+          throw error;
+        },
+      }),
+      spawnDaemon: async () => {},
+      stdout: { write: async () => true },
+      stderr: { write: async (chunk: string) => { stderr.push(chunk); } },
+    });
+
+    expect(exitCode).toBe(4);
+    expect(stderr.join("")).toContain("connect ECONNREFUSED");
+    expect(stderr.join("")).not.toContain("at requestWithAutoStart");
+  });
+
+  it.each([
+    ["linux", "Linux"],
+    ["darwin", "macOS"],
+  ] as const)("rejects physical LED commands on %s", async (platform, displayName) => {
+    const stderr: string[] = [];
+
+    const exitCode = await runCli(["active"], {
+      platform,
+      createClient: () => {
+        throw new Error("should not connect");
+      },
+      spawnDaemon: async () => {
+        throw new Error("should not spawn");
+      },
+      stdout: { write: async () => true },
+      stderr: { write: async (chunk: string) => { stderr.push(chunk); } },
+    });
+
+    expect(exitCode).toBe(3);
+    expect(stderr.join("")).toContain(`${displayName} keyboard LED control is not supported yet.`);
+    expect(stderr.join("")).toContain("Windows");
+  });
+
+  it("keeps help available on unsupported platforms", async () => {
+    const stdout: string[] = [];
+
+    const exitCode = await runCli(["help"], {
+      platform: "linux",
+      createClient: () => {
+        throw new Error("should not connect");
+      },
+      spawnDaemon: async () => {
+        throw new Error("should not spawn");
+      },
+      stdout: { write: async (chunk: string) => { stdout.push(chunk); } },
+      stderr: { write: async () => true },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdout.join("")).toContain("Usage:");
+  });
+
   it("sends active as a setState request", async () => {
     const clientFactory = createClientFactory([{ ok: true }]);
     const exitCode = await runCli(["active"], {
+      platform: "win32",
       createClient: clientFactory.createClient,
       spawnDaemon: async () => {},
       stdout: { write: async () => true },
@@ -51,6 +223,7 @@ describe("runCli", () => {
       "--animation",
       "scan-pingpong",
     ], {
+      platform: "win32",
       createClient: clientFactory.createClient,
       spawnDaemon: async () => {},
       stdout: { write: async () => true },
@@ -74,6 +247,7 @@ describe("runCli", () => {
   it("treats ttl zero as an infinite request", async () => {
     const clientFactory = createClientFactory([{ ok: true }]);
     const exitCode = await runCli(["active", "--ttl", "0"], {
+      platform: "win32",
       createClient: clientFactory.createClient,
       spawnDaemon: async () => {},
       stdout: { write: async () => true },
@@ -94,6 +268,7 @@ describe("runCli", () => {
   it("sends a direct LED poke request", async () => {
     const clientFactory = createClientFactory([{ ok: true }]);
     const exitCode = await runCli(["poke", "num"], {
+      platform: "win32",
       createClient: clientFactory.createClient,
       spawnDaemon: async () => {},
       stdout: { write: async () => true },
@@ -112,6 +287,7 @@ describe("runCli", () => {
   it("stops the daemon explicitly", async () => {
     const clientFactory = createClientFactory([{ ok: true }]);
     const exitCode = await runCli(["daemon", "stop"], {
+      platform: "win32",
       createClient: clientFactory.createClient,
       spawnDaemon: async () => {},
       stdout: { write: async () => true },
@@ -128,6 +304,7 @@ describe("runCli", () => {
     const spawnCalls: string[] = [];
 
     const exitCode = await runCli(["daemon", "restart"], {
+      platform: "win32",
       createClient: () => ({
         async request(request: unknown) {
           requests.push(request);
@@ -167,6 +344,7 @@ describe("runCli", () => {
   it("sends blocked requests", async () => {
     const blockedClient = createClientFactory([{ ok: true }]);
     const blockedExit = await runCli(["blocked"], {
+      platform: "win32",
       createClient: blockedClient.createClient,
       spawnDaemon: async () => {},
       stdout: { write: async () => true },
@@ -183,6 +361,7 @@ describe("runCli", () => {
   it("accepts comma or whitespace separated LED config values", async () => {
     const clientFactory = createClientFactory([{ ok: true }]);
     const exitCode = await runCli(["config", "set", "leds", "caps num scroll"], {
+      platform: "win32",
       createClient: clientFactory.createClient,
       spawnDaemon: async () => {},
       stdout: { write: async () => true },
@@ -207,6 +386,7 @@ describe("runCli", () => {
       },
     ]);
     const exitCode = await runCli(["config", "clean"], {
+      platform: "win32",
       createClient: clientFactory.createClient,
       spawnDaemon: async () => {},
       stdout: { write: async (chunk: string) => { stdout.push(chunk); } },
@@ -243,6 +423,7 @@ describe("runCli", () => {
       },
     ]);
     const exitCode = await runCli(["hook", "get"], {
+      platform: "win32",
       createClient: clientFactory.createClient,
       spawnDaemon: async () => {},
       stdout: { write: async (chunk: string) => { stdout.push(chunk); } },
@@ -281,6 +462,7 @@ describe("runCli", () => {
       },
     ]);
     const exitCode = await runCli(["hook", "install", "codex"], {
+        platform: "win32",
         createClient: clientFactory.createClient,
         spawnDaemon: async () => {},
         stdout: { write: async (chunk: string) => { stdout.push(chunk); } },
@@ -324,6 +506,7 @@ describe("runCli", () => {
 
     const stdout: string[] = [];
     const exitCode = await runCli(["hook", "uninstall", "codex"], {
+      platform: "win32",
       createClient: () => {
         throw new Error("should not connect");
       },
@@ -372,6 +555,7 @@ describe("runCli", () => {
       { ok: true, data: config },
     ]);
     const exitCode = await runCli(["hook", "check"], {
+      platform: "win32",
       createClient: clientFactory.createClient,
       spawnDaemon: async () => {},
       stdout: { write: async (chunk: string) => { stdout.push(chunk); } },
@@ -408,6 +592,7 @@ describe("runCli", () => {
     ]);
 
     const exitCode = await runCli(["hook", "check", "--json"], {
+      platform: "win32",
       createClient: clientFactory.createClient,
       spawnDaemon: async () => {},
       stdout: { write: async (chunk: string) => { stdout.push(chunk); } },
@@ -433,6 +618,7 @@ describe("runCli", () => {
     const spawnCalls: string[] = [];
 
     const exitCode = await runCli(["status"], {
+      platform: "win32",
       createClient: () => ({
         async request(request: unknown) {
           requests.push(request);

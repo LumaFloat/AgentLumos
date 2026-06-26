@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { Command, CommanderError } from "commander";
 import { parseTtlOrZero } from "../core/duration";
 import { createNamedPipeClient } from "../daemon/named-pipe-client";
 import { getDaemonPipePath } from "../daemon/pipe-path";
@@ -21,6 +22,24 @@ import { formatJson, formatWarning } from "./format";
 const DAEMON_START_RETRY_COUNT = 20;
 const DAEMON_START_RETRY_DELAY_MS = 100;
 
+export const CLI_EXIT = {
+  SUCCESS: 0,
+  INTERNAL_ERROR: 1,
+  USAGE_ERROR: 2,
+  UNSUPPORTED_PLATFORM: 3,
+  DAEMON_UNAVAILABLE: 4,
+  DRIVER_FAILURE: 5,
+} as const;
+
+type CliExitCode = (typeof CLI_EXIT)[keyof typeof CLI_EXIT];
+
+class CliUsageError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CliUsageError";
+  }
+}
+
 export interface DaemonClient {
   request(request: DaemonRequest): Promise<DaemonResponse>;
 }
@@ -30,15 +49,34 @@ export interface CliDeps {
   spawnDaemon(): Promise<void>;
   stdout: { write(chunk: string): boolean | void | Promise<boolean | void> };
   stderr: { write(chunk: string): boolean | void | Promise<boolean | void> };
+  platform?: NodeJS.Platform;
 }
 
-interface ParsedCliCommand {
-  request?: DaemonRequest;
-  retryOnConnectFailure?: boolean;
-  lifecycle?: "daemon-stop" | "daemon-restart";
-  local?: "hook-check" | "hook-install" | "hook-uninstall";
-  hookTarget?: HookIntegrationName;
+type CliOperation =
+  | { kind: "help" }
+  | {
+      kind: "daemon-request";
+      request: DaemonRequest;
+      retryOnConnectFailure?: boolean;
+      afterResponse?: (response: DaemonResponse) => string | null;
+    }
+  | { kind: "hook-check"; json?: boolean }
+  | { kind: "hook-install"; hookTarget: HookIntegrationName }
+  | { kind: "hook-uninstall"; hookTarget: HookIntegrationName }
+  | { kind: "daemon-restart" };
+
+interface StateCommandOptions {
+  ttl?: string;
+  leds?: string;
+  animation?: string;
+}
+
+interface HookCheckOptions {
   json?: boolean;
+}
+
+interface SetDaemonRequestOptions {
+  retryOnConnectFailure?: boolean;
   afterResponse?: (response: DaemonResponse) => string | null;
 }
 
@@ -112,182 +150,35 @@ function parseConfigValue(key: string, value: string): Partial<{ leds: LedName[]
     return { defaultTtl: value };
   }
 
-  throw new Error(`Unsupported config key: ${key}`);
+  throw new CliUsageError(`Unsupported config key: ${key}`);
 }
 
-function parseCommand(argv: string[]): ParsedCliCommand {
-  const [command, ...rest] = argv;
-
-  if (!command) {
-    throw new Error("No command provided.");
-  }
-
-  if (command === "active" || command === "blocked" || command === "success" || command === "error") {
-    const parsedArgs = parseStateArguments(rest);
-    return {
-      request: {
-        type: "setState",
-        state: command,
-        ttlMs: parsedArgs.ttlMs,
-        overrides: parsedArgs.overrides,
-      },
-      retryOnConnectFailure: true,
-    };
-  }
-
-  if (command === "off") {
-    return {
-      request: { type: "setState", state: "idle" },
-      retryOnConnectFailure: true,
-    };
-  }
-
-  if (command === "poke" || command === "test") {
-    const ledName = rest.find((value) => !value.startsWith("--"));
-    if (!ledName) {
-      throw new Error("Usage: lumos poke <caps|num|scroll>");
-    }
-
-    return {
-      request: {
-        type: "pokeLed",
-        led: parseLedName(ledName),
-      },
-      retryOnConnectFailure: true,
-    };
-  }
-
-  if (command === "status") {
-    return {
-      request: { type: "getStatus" },
-      retryOnConnectFailure: true,
-      afterResponse: (response) => formatJson((response as Extract<DaemonResponse, { ok: true }>).data),
-    };
-  }
-
-  if (command === "demo") {
-    return {
-      request: { type: "runDemo" },
-      retryOnConnectFailure: true,
-    };
-  }
-
-  if (command === "daemon") {
-    const [subcommand] = rest;
-    if (subcommand === "stop") {
-      return {
-        request: { type: "shutdown" },
-        retryOnConnectFailure: false,
-      };
-    }
-
-    if (subcommand === "restart") {
-      return {
-        lifecycle: "daemon-restart",
-      };
-    }
-
-    throw new Error("Usage: lumos daemon stop | lumos daemon restart");
-  }
-
-  if (command === "config") {
-    const [subcommand, key, value] = rest;
-    if (subcommand === "get") {
-      return {
-        request: { type: "getConfig" },
-        retryOnConnectFailure: true,
-        afterResponse: (response) => formatJson((response as Extract<DaemonResponse, { ok: true }>).data),
-      };
-    }
-
-    if (subcommand === "clean") {
-      return {
-        request: { type: "resetConfig" },
-        retryOnConnectFailure: true,
-        afterResponse: (response) => formatJson((response as Extract<DaemonResponse, { ok: true }>).data),
-      };
-    }
-
-    if (subcommand === "set" && key && value) {
-      return {
-        request: { type: "setConfig", patch: parseConfigValue(key, value) },
-        retryOnConnectFailure: true,
-      };
-    }
-
-    throw new Error("Usage: lumos config get | lumos config clean | lumos config set <leds|defaultTtl> <value>");
-  }
-
-  if (command === "hook") {
-    const [subcommand, target] = rest;
-    if (subcommand === "get") {
-      return {
-        request: { type: "getConfig" },
-        retryOnConnectFailure: true,
-        afterResponse: (response) => formatJson(((response as Extract<DaemonResponse, { ok: true }>).data as LumosConfig).hookIntegrations),
-      };
-    }
-
-    if (subcommand === "check") {
-      const extraArgs = rest.slice(1);
-      const json = extraArgs.includes("--json");
-      const unknownArgs = extraArgs.filter((arg) => arg !== "--json");
-      if (unknownArgs.length > 0) {
-        throw new Error("Usage: lumos hook check [--json]");
-      }
-
-      return {
-        local: "hook-check",
-        json,
-      };
-    }
-
-    if ((subcommand === "install" || subcommand === "uninstall") && target) {
-      const hookTarget = parseHookIntegrationName(target);
-      return {
-        local: subcommand === "install" ? "hook-install" : "hook-uninstall",
-        hookTarget,
-      };
-    }
-
-    throw new Error("Usage: lumos hook get | lumos hook check | lumos hook install <codex|claude-code> | lumos hook uninstall <codex|claude-code>");
-  }
-
-  throw new Error(`Unknown command: ${command}`);
-}
-
-function parseStateArguments(rest: string[]): { ttlMs?: number; overrides?: LumosStateOverride } {
-  const ttl = getFlagValue(rest, "--ttl");
-  const leds = getFlagValue(rest, "--leds");
-  const animation = getFlagValue(rest, "--animation");
+function buildStateRequest(state: Exclude<LumosState, "idle">, options: StateCommandOptions): DaemonRequest {
   const overrides: LumosStateOverride = {};
 
-  if (leds) {
-    overrides.leds = parseLedList(leds);
+  if (options.leds) {
+    overrides.leds = parseLedList(options.leds);
   }
 
-  if (animation) {
-    overrides.animation = parseAnimationName(animation);
+  if (options.animation) {
+    overrides.animation = parseAnimationName(options.animation);
   }
 
   return {
-    ttlMs: ttl ? parseTtlOrZero(ttl) : undefined,
+    type: "setState",
+    state,
+    ttlMs: options.ttl ? parseTtlOrZero(options.ttl) : undefined,
     overrides: Object.keys(overrides).length > 0 ? overrides : undefined,
   };
 }
 
-function getFlagValue(rest: string[], flag: string): string | undefined {
-  const flagIndex = rest.indexOf(flag);
-  if (flagIndex === -1) {
-    return undefined;
+function rejectDuplicateOptions(argv: string[], flags: string[]): void {
+  for (const flag of flags) {
+    const count = argv.filter((arg) => arg === flag || arg.startsWith(`${flag}=`)).length;
+    if (count > 1) {
+      throw new CliUsageError(`Duplicate option: ${flag}`);
+    }
   }
-
-  const value = rest[flagIndex + 1];
-  if (!value) {
-    throw new Error(`Missing value for ${flag}.`);
-  }
-
-  return value;
 }
 
 function parseLedList(value: string): LedName[] {
@@ -298,7 +189,7 @@ function parseLedList(value: string): LedName[] {
 
   for (const led of leds) {
     if (!isLedName(led)) {
-      throw new Error(`Invalid LED name: ${led}`);
+      throw new CliUsageError(`Invalid LED name: ${led}`);
     }
   }
 
@@ -311,7 +202,7 @@ function isLedName(value: string): value is LedName {
 
 function parseLedName(value: string): LedName {
   if (!isLedName(value)) {
-    throw new Error(`Invalid LED name: ${value}`);
+    throw new CliUsageError(`Invalid LED name: ${value}`);
   }
 
   return value;
@@ -319,7 +210,7 @@ function parseLedName(value: string): LedName {
 
 function parseAnimationName(value: string): AnimationName {
   if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(value)) {
-    throw new Error(`Invalid animation name: ${value}`);
+    throw new CliUsageError(`Invalid animation name: ${value}`);
   }
 
   return value;
@@ -330,7 +221,200 @@ function parseHookIntegrationName(value: string): HookIntegrationName {
     return value;
   }
 
-  throw new Error(`Invalid hook target: ${value}`);
+  throw new CliUsageError(`Invalid hook target: ${value}`);
+}
+
+function setDaemonRequest(
+  setOperation: (operation: CliOperation) => void,
+  request: DaemonRequest,
+  options: SetDaemonRequestOptions = {},
+): void {
+  setOperation({
+    kind: "daemon-request",
+    request,
+    retryOnConnectFailure: options.retryOnConnectFailure,
+    afterResponse: options.afterResponse,
+  });
+}
+
+function createProgram(setOperation: (operation: CliOperation) => void, deps: CliDeps): Command {
+  const program = new Command();
+  program
+    .name("lumos")
+    .description("Keyboard LED status lights for AI coding agents.")
+    .addHelpCommand(false)
+    .exitOverride()
+    .showHelpAfterError()
+    .configureOutput({
+      writeOut: (chunk) => {
+        void deps.stdout.write(chunk);
+      },
+      writeErr: (chunk) => {
+        void deps.stderr.write(chunk);
+      },
+    });
+
+  program
+    .command("help")
+    .description("Show command help.")
+    .allowExcessArguments(false)
+    .action(() => {
+      program.outputHelp();
+      setOperation({ kind: "help" });
+    });
+
+  for (const state of ["active", "blocked", "success", "error"] as const) {
+    program
+      .command(state)
+      .description(`Show ${state} state.`)
+      .allowExcessArguments(false)
+      .option("--ttl <duration>", "state TTL")
+      .option("--leds <list>", "runtime LED list")
+      .option("--animation <name>", "runtime animation name")
+      .action((options: StateCommandOptions) => {
+        setDaemonRequest(setOperation, buildStateRequest(state, options), { retryOnConnectFailure: true });
+      });
+  }
+
+  program
+    .command("off")
+    .description("Stop animation and restore lock state.")
+    .allowExcessArguments(false)
+    .action(() => {
+      setDaemonRequest(setOperation, { type: "setState", state: "idle" }, { retryOnConnectFailure: true });
+    });
+
+  for (const commandName of ["poke", "test"] as const) {
+    program
+      .command(`${commandName} <led>`)
+      .description("Toggle one LED for diagnostics.")
+      .allowExcessArguments(false)
+      .action((led: string) => {
+        setDaemonRequest(setOperation, { type: "pokeLed", led: parseLedName(led) }, { retryOnConnectFailure: true });
+      });
+  }
+
+  program
+    .command("status")
+    .description("Print daemon status.")
+    .allowExcessArguments(false)
+    .action(() => {
+      setDaemonRequest(setOperation, { type: "getStatus" }, {
+        retryOnConnectFailure: true,
+        afterResponse: (response) => formatJson((response as Extract<DaemonResponse, { ok: true }>).data),
+      });
+    });
+
+  program
+    .command("demo")
+    .description("Run the built-in LED demo.")
+    .allowExcessArguments(false)
+    .action(() => {
+      setDaemonRequest(setOperation, { type: "runDemo" }, { retryOnConnectFailure: true });
+    });
+
+  const daemon = program.command("daemon").description("Manage the AgentLumos daemon.");
+  daemon
+    .command("stop")
+    .allowExcessArguments(false)
+    .action(() => {
+      setDaemonRequest(setOperation, { type: "shutdown" }, { retryOnConnectFailure: false });
+    });
+  daemon
+    .command("restart")
+    .allowExcessArguments(false)
+    .action(() => {
+      setOperation({ kind: "daemon-restart" });
+    });
+
+  const config = program.command("config").description("Read or update configuration.");
+  config
+    .command("get")
+    .allowExcessArguments(false)
+    .action(() => {
+      setDaemonRequest(setOperation, { type: "getConfig" }, {
+        retryOnConnectFailure: true,
+        afterResponse: (response) => formatJson((response as Extract<DaemonResponse, { ok: true }>).data),
+      });
+    });
+  config
+    .command("clean")
+    .allowExcessArguments(false)
+    .action(() => {
+      setDaemonRequest(setOperation, { type: "resetConfig" }, {
+        retryOnConnectFailure: true,
+        afterResponse: (response) => formatJson((response as Extract<DaemonResponse, { ok: true }>).data),
+      });
+    });
+  config
+    .command("set <key> <value>")
+    .allowExcessArguments(false)
+    .action((key: string, value: string) => {
+      setDaemonRequest(setOperation, { type: "setConfig", patch: parseConfigValue(key, value) }, { retryOnConnectFailure: true });
+    });
+
+  const hook = program.command("hook").description("Manage agent hook integrations.");
+  hook
+    .command("get")
+    .allowExcessArguments(false)
+    .action(() => {
+      setDaemonRequest(setOperation, { type: "getConfig" }, {
+        retryOnConnectFailure: true,
+        afterResponse: (response) => formatJson(((response as Extract<DaemonResponse, { ok: true }>).data as LumosConfig).hookIntegrations),
+      });
+    });
+  hook
+    .command("check")
+    .allowExcessArguments(false)
+    .option("--json", "print JSON report")
+    .action((options: HookCheckOptions) => {
+      setOperation({ kind: "hook-check", json: options.json });
+    });
+  hook
+    .command("install <target>")
+    .allowExcessArguments(false)
+    .action((target: string) => {
+      setOperation({ kind: "hook-install", hookTarget: parseHookIntegrationName(target) });
+    });
+  hook
+    .command("uninstall <target>")
+    .allowExcessArguments(false)
+    .action((target: string) => {
+      setOperation({ kind: "hook-uninstall", hookTarget: parseHookIntegrationName(target) });
+    });
+
+  return program;
+}
+
+async function parseOperation(argv: string[], deps: CliDeps): Promise<CliOperation> {
+  const operationHolder: { operation: CliOperation | null } = { operation: null };
+  const program = createProgram((operation) => {
+    operationHolder.operation = operation;
+  }, deps);
+
+  if (argv.length === 0) {
+    program.outputHelp();
+    return { kind: "help" };
+  }
+
+  if (["active", "blocked", "success", "error"].includes(argv[0] ?? "")) {
+    rejectDuplicateOptions(argv.slice(1), ["--ttl", "--leds", "--animation"]);
+  }
+
+  try {
+    await program.parseAsync(argv, { from: "user" });
+  } catch (error) {
+    if (error instanceof CommanderError && error.code === "commander.helpDisplayed") {
+      return { kind: "help" };
+    }
+    throw error;
+  }
+
+  if (!operationHolder.operation) {
+    throw new Error("No request to execute.");
+  }
+
+  return operationHolder.operation;
 }
 
 function buildNativeHookSnippet(target: HookIntegrationName, integration: HookIntegrationConfig): { hooks: NativeHookConfig } {
@@ -865,44 +949,82 @@ async function requestWithAutoStart(
   }
 }
 
+function exitCodeForResponse(response: Extract<DaemonResponse, { ok: false }>): CliExitCode {
+  switch (response.code) {
+    case "driver_failed":
+      return CLI_EXIT.DRIVER_FAILURE;
+    case "input_error":
+      return CLI_EXIT.USAGE_ERROR;
+    case "daemon_error":
+    case "ipc_error":
+      return CLI_EXIT.DAEMON_UNAVAILABLE;
+    default:
+      return CLI_EXIT.INTERNAL_ERROR;
+  }
+}
+
+function isPhysicalLedOperation(operation: CliOperation): boolean {
+  return operation.kind === "daemon-request" ||
+    operation.kind === "daemon-restart" ||
+    operation.kind === "hook-check" ||
+    operation.kind === "hook-install";
+}
+
+function getUnsupportedPlatformMessage(platform: NodeJS.Platform): string | null {
+  if (platform === "linux") {
+    return "Linux keyboard LED control is not supported yet. AgentLumos currently supports physical LED effects on Windows.";
+  }
+  if (platform === "darwin") {
+    return "macOS keyboard LED control is not supported yet. AgentLumos currently supports physical LED effects on Windows.";
+  }
+  if (platform !== "win32") {
+    return `Keyboard LED control is not supported on platform "${platform}". AgentLumos currently supports physical LED effects on Windows.`;
+  }
+  return null;
+}
+
 export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
-  const parsed = parseCommand(argv);
   try {
-    if (parsed.local === "hook-check") {
+    const operation = await parseOperation(argv, deps);
+    if (operation.kind === "help") {
+      return CLI_EXIT.SUCCESS;
+    }
+
+    const unsupportedPlatformMessage = isPhysicalLedOperation(operation)
+      ? getUnsupportedPlatformMessage(deps.platform ?? process.platform)
+      : null;
+    if (unsupportedPlatformMessage) {
+      await writeError(deps, formatWarning(unsupportedPlatformMessage));
+      return CLI_EXIT.UNSUPPORTED_PLATFORM;
+    }
+
+    if (operation.kind === "hook-check") {
       const statusResponse = await requestWithAutoStart(deps, { type: "getStatus" }, true).catch(() => null);
       const configResponse = await requestWithAutoStart(deps, { type: "getConfig" }, true).catch(() => null);
       const config = configResponse?.ok ? (configResponse.data as LumosConfig) : null;
       const report = getHookCheckReport(Boolean(statusResponse?.ok), config);
-      await write(deps, parsed.json ? formatJson(report) : formatHookCheckText(buildHookCheckView(report)));
-      return 0;
+      await write(deps, operation.json ? formatJson(report) : formatHookCheckText(buildHookCheckView(report)));
+      return CLI_EXIT.SUCCESS;
     }
 
-    if (parsed.local === "hook-install") {
-      if (!parsed.hookTarget) {
-        throw new Error("Missing hook target.");
-      }
-
+    if (operation.kind === "hook-install") {
       const response = await requestWithAutoStart(deps, { type: "getConfig" }, true);
       if (!response.ok) {
         await writeError(deps, formatWarning(response.message));
-        return 2;
+        return exitCodeForResponse(response);
       }
 
       const config = response.data as LumosConfig;
-      await write(deps, formatJson(installAgentLumosHooks(parsed.hookTarget, config.hookIntegrations[parsed.hookTarget])));
-      return 0;
+      await write(deps, formatJson(installAgentLumosHooks(operation.hookTarget, config.hookIntegrations[operation.hookTarget])));
+      return CLI_EXIT.SUCCESS;
     }
 
-    if (parsed.local === "hook-uninstall") {
-      if (!parsed.hookTarget) {
-        throw new Error("Missing hook target.");
-      }
-
-      await write(deps, formatJson(uninstallAgentLumosHooks(parsed.hookTarget)));
-      return 0;
+    if (operation.kind === "hook-uninstall") {
+      await write(deps, formatJson(uninstallAgentLumosHooks(operation.hookTarget)));
+      return CLI_EXIT.SUCCESS;
     }
 
-    if (parsed.lifecycle === "daemon-restart") {
+    if (operation.kind === "daemon-restart") {
       await requestWithAutoStart(deps, { type: "shutdown" }, false).catch((error) => {
         if (!isConnectFailure(error)) {
           throw error;
@@ -911,15 +1033,15 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
 
       await deps.spawnDaemon();
       await waitForDaemonReady(deps);
-      return 0;
+      return CLI_EXIT.SUCCESS;
     }
 
-    if (!parsed.request) {
+    if (operation.kind !== "daemon-request") {
       throw new Error("No request to execute.");
     }
 
-    const response = await requestWithAutoStart(deps, parsed.request, parsed.retryOnConnectFailure ?? true).catch((error) => {
-      if (parsed.request?.type === "shutdown" && isConnectFailure(error)) {
+    const response = await requestWithAutoStart(deps, operation.request, operation.retryOnConnectFailure ?? true).catch((error) => {
+      if (operation.request.type === "shutdown" && isConnectFailure(error)) {
         return { ok: true } as DaemonResponse;
       }
 
@@ -927,32 +1049,37 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
     });
     if (!response.ok) {
       await writeError(deps, formatWarning(response.message));
-      switch (response.code) {
-        case "driver_failed":
-          return 3;
-        case "daemon_error":
-        case "ipc_error":
-          return 2;
-        default:
-          return 1;
-      }
+      return exitCodeForResponse(response);
     }
 
     if (response.warning) {
       await writeError(deps, formatWarning(response.warning));
     }
 
-    if (parsed.afterResponse) {
-      const output = parsed.afterResponse(response);
+    if (operation.afterResponse) {
+      const output = operation.afterResponse(response);
       if (output) {
         await write(deps, output);
       }
     }
 
-    return 0;
+    return CLI_EXIT.SUCCESS;
   } catch (error) {
+    if (error instanceof CommanderError) {
+      return CLI_EXIT.USAGE_ERROR;
+    }
+
+    if (error instanceof CliUsageError) {
+      await writeError(deps, formatWarning(error.message));
+      return CLI_EXIT.USAGE_ERROR;
+    }
+
     await writeError(deps, formatWarning(error instanceof Error ? error.message : String(error)));
-    return 2;
+    if (isConnectFailure(error)) {
+      return CLI_EXIT.DAEMON_UNAVAILABLE;
+    }
+
+    return CLI_EXIT.INTERNAL_ERROR;
   }
 }
 

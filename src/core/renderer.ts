@@ -1,4 +1,4 @@
-import type { LedName, LumosAnimationConfig, LumosState } from "../types";
+import type { LedName, LumosAnimationConfig, LumosState, RenderStep } from "../types";
 import { buildAnimationSteps } from "./patterns";
 
 export interface RenderStateInput {
@@ -7,7 +7,7 @@ export interface RenderStateInput {
   configuredLeds: readonly LedName[];
 }
 
-export function renderState(input: RenderStateInput) {
+export function renderState(input: RenderStateInput): RenderStep[] {
   if (input.state === "idle") {
     return [];
   }

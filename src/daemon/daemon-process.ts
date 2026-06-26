@@ -4,24 +4,20 @@ import { createLumosDaemon } from "./daemon";
 import { createNamedPipeServer } from "./named-pipe-server";
 import { getDaemonPipePath } from "./pipe-path";
 import { handleDaemonRequest } from "./ipc-handler";
-import { createFakeKeyboardDriver } from "../drivers/keyboard/fake";
 import { createWindowsKeyboardDriver } from "../drivers/keyboard/windows";
 import { createWindowsInputActivityMonitor } from "../drivers/input/windows";
-import type { DaemonRequest, LockState } from "../types";
+import type { DaemonRequest } from "../types";
 
 const pipePath = getDaemonPipePath();
 const configPath = getConfigPath(process.env.APPDATA ?? os.tmpdir());
 
-const initialState: LockState = {
-  caps: false,
-  num: false,
-  scroll: false,
-};
+if (process.platform !== "win32") {
+  throw new Error(
+    `AgentLumos keyboard LED control is not supported on ${process.platform}. Physical LED effects currently require Windows.`,
+  );
+}
 
-const driver =
-  process.platform === "win32"
-    ? createWindowsKeyboardDriver()
-    : createFakeKeyboardDriver(initialState);
+const driver = createWindowsKeyboardDriver();
 
 const daemon = createLumosDaemon({
   driver,

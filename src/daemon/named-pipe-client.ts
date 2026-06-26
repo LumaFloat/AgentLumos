@@ -2,6 +2,10 @@ import net from "node:net";
 import type { DaemonRequest, DaemonResponse } from "../types";
 import { getMemoryPipeHandler } from "./named-pipe-server";
 
+export interface NamedPipeClient {
+  request(request: DaemonRequest): Promise<DaemonResponse>;
+}
+
 async function readLine(socket: net.Socket): Promise<string> {
   return new Promise<string>((resolve, reject) => {
     let buffer = "";
@@ -46,7 +50,7 @@ async function readLine(socket: net.Socket): Promise<string> {
   });
 }
 
-export function createNamedPipeClient(pipePath: string) {
+export function createNamedPipeClient(pipePath: string): NamedPipeClient {
   return {
     async request(request: DaemonRequest): Promise<DaemonResponse> {
       if (pipePath.startsWith("memory:")) {

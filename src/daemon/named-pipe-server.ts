@@ -5,13 +5,18 @@ import type { DaemonRequest, DaemonResponse } from "../types";
 type Handler = (request: DaemonRequest) => Promise<DaemonResponse> | DaemonResponse;
 const memoryServers = new Map<string, Handler>();
 
-export function createNamedPipeServer(pipePath: string, handler: Handler) {
+export interface NamedPipeServer {
+  start(): Promise<void>;
+  close(): Promise<void>;
+}
+
+export function createNamedPipeServer(pipePath: string, handler: Handler): NamedPipeServer {
   if (pipePath.startsWith("memory:")) {
     return {
-      async start() {
+      async start(): Promise<void> {
         memoryServers.set(pipePath, handler);
       },
-      async close() {
+      async close(): Promise<void> {
         memoryServers.delete(pipePath);
       },
     };
@@ -48,7 +53,7 @@ export function createNamedPipeServer(pipePath: string, handler: Handler) {
   });
 
   return {
-    async start() {
+    async start(): Promise<void> {
       if (process.platform !== "win32") {
         try {
           fs.rmSync(pipePath);
@@ -63,7 +68,7 @@ export function createNamedPipeServer(pipePath: string, handler: Handler) {
       });
     },
 
-    async close() {
+    async close(): Promise<void> {
       await new Promise<void>((resolve, reject) => {
         server.close((error) => {
           if (error) {

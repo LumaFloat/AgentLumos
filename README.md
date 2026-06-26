@@ -52,7 +52,7 @@ npm install -g .
 
 Requires Node.js 20 or newer.
 
-## 30-second test
+## Quick Start
 
 Run these commands from PowerShell:
 
@@ -66,21 +66,21 @@ lumos demo
 # Set the physical LED order from left to right.
 lumos config set leds num,caps,scroll
 
-# Show the active animation for 5 seconds.
-lumos active --ttl 5
+# Install the hook for the agent you use.
+lumos hook install codex
+lumos hook install claude-code
 
-# Show the blocked animation for 5 seconds.
-lumos blocked --ttl 5
-
-# Show the success animation.
-lumos success
-
-# Show the error animation.
-lumos error
-
-# Stop animation and restore the original Lock state.
-lumos off
+# Check whether AgentLumos and agent hooks are ready.
+lumos hook check
 ```
+
+## Basic Usage
+
+The main AgentLumos flow is: configure the visible Lock LEDs on your keyboard, then install the hook for the agent you use. After that, Codex or Claude Code hooks trigger `active`, `blocked`, `success`, and `error` automatically. You should not need to run state commands manually during normal use.
+
+### 1. Configure Your Keyboard LEDs
+
+First run `lumos demo` to see which lights move, then run `lumos config set leds ...` to match the physical LED order from left to right.
 
 If your keyboard exposes fewer Lock LEDs, configure only the usable ones:
 
@@ -90,7 +90,30 @@ lumos config set leds caps
 
 # Use Caps Lock and Num Lock LEDs.
 lumos config set leds caps,num
+
+# Common three-LED keyboard: use your actual left-to-right order.
+lumos config set leds num,caps,scroll
 ```
+
+### 2. Install The Agent Hook
+
+Install only the hook for the agent you actually use:
+
+```powershell
+# Install Codex hook handlers.
+lumos hook install codex
+
+# Install Claude Code hook handlers.
+lumos hook install claude-code
+```
+
+After installing, run:
+
+```powershell
+lumos hook check
+```
+
+If the check reports that the `lumos` command is missing, confirm that `npm install -g .` has run and reopen PowerShell.
 
 ## Agent hooks
 
@@ -119,20 +142,38 @@ Read the setup guides:
 - [Codex hooks](docs/hooks/codex.md)
 - [Claude Code hooks](docs/hooks/claude-code.md)
 
+## Verification and Troubleshooting
+
+These commands are mainly for checking effects or diagnosing problems. They are not the normal daily entry point for using AgentLumos:
+
+```powershell
+# Play built-in animations to check whether LEDs are controllable.
+lumos demo
+
+# Manually show short states to check animation behavior.
+lumos active --ttl 5
+lumos blocked --ttl 5
+lumos success
+lumos error
+
+# Test one LED directly.
+lumos test caps
+
+# Stop the current animation and restore the original Lock state.
+lumos off
+
+# Restart the background daemon.
+lumos daemon restart
+
+# Delete config and regenerate defaults on the next launch.
+lumos config clean
+```
+
 ## CLI
 
-| Command | Purpose |
-| --- | --- |
-| `lumos status` | Show daemon state, selected LEDs, current animation, TTL, driver, and last error. |
-| `lumos demo` | Play the built-in demo sequence. |
-| `lumos active` | Show the agent working state. |
-| `lumos blocked` | Show the waiting-for-user state. |
-| `lumos success` | Show the completion state. |
-| `lumos error` | Show the failure state. |
-| `lumos off` | Stop the animation and restore the original Lock state. |
-| `lumos config get` | Print the current config. |
-| `lumos config clean` | Delete the config file so defaults are regenerated next time. |
-| `lumos hook check --json` | Print hook readiness as structured JSON. |
+Run `lumos help` to see commands, arguments, and options. The CLI supports state, diagnostic, daemon, config, and hook commands. Command mistakes print concise messages without JavaScript stack traces.
+
+See the [CLI reference](docs/cli.md) for command details, exit codes, and platform behavior.
 
 ## Configuration
 
@@ -167,7 +208,7 @@ Use `lumos config clean` to remove the current config and let AgentLumos regener
 
 AgentLumos is currently Windows-first. The current driver targets keyboard Lock LEDs through Windows input behavior.
 
-Linux and macOS support are not implemented yet. Some keyboards, laptop firmware, KVMs, remote desktops, and vendor utilities may expose Lock state differently or not expose visible Lock LEDs at all.
+Linux and macOS hardware drivers are not implemented yet. Some keyboards, laptop firmware, KVMs, remote desktops, and vendor utilities may expose Lock state differently or not expose visible Lock LEDs at all.
 
 The broader direction is to make agent state visible through glanceable hardware indicators. Future work may explore keyboard backlight or RGB zones where vendor support is practical, dedicated external status-light hardware, cross-platform drivers, stronger interrupted-session recovery, broader keyboard compatibility notes, and more integrations.
 
@@ -175,6 +216,7 @@ The broader direction is to make agent state visible through glanceable hardware
 
 - [Chinese README](README.zh-CN.md)
 - [Chinese docs](docs/zh-CN/)
+- [CLI reference](docs/cli.md)
 - [Windows manual test guide](docs/manual-windows-test.md)
 - [Codex hook guide](docs/hooks/codex.md)
 - [Claude Code hook guide](docs/hooks/claude-code.md)

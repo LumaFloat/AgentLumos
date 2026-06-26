@@ -15,6 +15,20 @@ export interface LumosDaemonOptions {
   keyboardPollMs?: number;
 }
 
+export interface LumosDaemon {
+  setState(
+    state: LumosState,
+    animationName?: AnimationName,
+    animation?: LumosAnimationConfig,
+    configuredLeds?: readonly LedName[],
+    ttlMs?: number,
+  ): Promise<void>;
+  pokeLed(led: LedName): Promise<void>;
+  shutdown(): Promise<void>;
+  waitForIdle(): Promise<void>;
+  getStatus(): LumosStatus;
+}
+
 type ActiveState = Exclude<LumosState, "idle">;
 
 interface EffectDescriptor {
@@ -59,7 +73,7 @@ function canDeferReminder(state: ActiveState): boolean {
   return state !== "active";
 }
 
-export function createLumosDaemon(options: LumosDaemonOptions) {
+export function createLumosDaemon(options: LumosDaemonOptions): LumosDaemon {
   const clock: EffectClock =
     options.clock ?? {
       now: () => Date.now(),
@@ -98,7 +112,7 @@ export function createLumosDaemon(options: LumosDaemonOptions) {
     return descriptor.expiresAt !== null && clock.now() >= descriptor.expiresAt;
   }
 
-  function syncActiveStatus(descriptor: EffectDescriptor, effectSuppressed: boolean, activeAnimation: AnimationName | null) {
+  function syncActiveStatus(descriptor: EffectDescriptor, effectSuppressed: boolean, activeAnimation: AnimationName | null): void {
     status = {
       ...status,
       state: descriptor.state,
@@ -112,7 +126,7 @@ export function createLumosDaemon(options: LumosDaemonOptions) {
     };
   }
 
-  function syncIdleStatus(extra: Partial<LumosStatus> = {}) {
+  function syncIdleStatus(extra: Partial<LumosStatus> = {}): void {
     status = {
       ...status,
       state: "idle",
@@ -167,12 +181,12 @@ export function createLumosDaemon(options: LumosDaemonOptions) {
     return originalLockState;
   }
 
-  function stopInputActivityMonitor() {
+  function stopInputActivityMonitor(): void {
     inputActivitySubscription?.stop();
     inputActivitySubscription = null;
   }
 
-  function clearActiveEffect() {
+  function clearActiveEffect(): void {
     stopInputActivityMonitor();
     activeController = null;
     activeTask = null;
@@ -182,7 +196,7 @@ export function createLumosDaemon(options: LumosDaemonOptions) {
     syncIdleStatus();
   }
 
-  async function suppressEffectForKeyboardInput(version: number) {
+  async function suppressEffectForKeyboardInput(version: number): Promise<void> {
     if (version !== effectVersion || status.state === "idle" || status.effectSuppressed) {
       return;
     }
@@ -204,7 +218,7 @@ export function createLumosDaemon(options: LumosDaemonOptions) {
     }
   }
 
-  async function resumeEffectAfterKeyboardIdle(version: number) {
+  async function resumeEffectAfterKeyboardIdle(version: number): Promise<void> {
     if (version !== effectVersion || status.state === "idle") {
       return;
     }
@@ -242,7 +256,7 @@ export function createLumosDaemon(options: LumosDaemonOptions) {
     };
   }
 
-  function startInputActivityMonitor(version: number, ignoredLeds: readonly LedName[]) {
+  function startInputActivityMonitor(version: number, ignoredLeds: readonly LedName[]): void {
     stopInputActivityMonitor();
     inputActivitySubscription = inputActivityMonitor.start({
       quietMs: keyboardIdleMs,
@@ -253,7 +267,7 @@ export function createLumosDaemon(options: LumosDaemonOptions) {
     });
   }
 
-  function settleFailure(version: number, error: unknown) {
+  function settleFailure(version: number, error: unknown): void {
     if (version !== effectVersion) {
       return;
     }
@@ -338,7 +352,7 @@ export function createLumosDaemon(options: LumosDaemonOptions) {
       });
   }
 
-  async function startSustainedEffect(descriptor: EffectDescriptor, initiallySuppressed = false) {
+  async function startSustainedEffect(descriptor: EffectDescriptor, initiallySuppressed = false): Promise<void> {
     effectVersion += 1;
     const version = effectVersion;
 
@@ -391,7 +405,7 @@ export function createLumosDaemon(options: LumosDaemonOptions) {
     }
   }
 
-  async function restoreOriginalState() {
+  async function restoreOriginalState(): Promise<void> {
     activeController?.abort();
     stopInputActivityMonitor();
     effectVersion += 1;
@@ -420,7 +434,7 @@ export function createLumosDaemon(options: LumosDaemonOptions) {
     clearActiveEffect();
   }
 
-  async function pulseLed(led: LedName) {
+  async function pulseLed(led: LedName): Promise<void> {
     await restoreOriginalState();
 
     const originalState = cloneLockState(await options.driver.readState());
@@ -439,7 +453,7 @@ export function createLumosDaemon(options: LumosDaemonOptions) {
       animation?: LumosAnimationConfig,
       configuredLeds: readonly LedName[] = options.configuredLeds,
       ttlMs = defaultTtlMs,
-    ) {
+    ): Promise<void> {
       if (state === "idle") {
         await restoreOriginalState();
         return;
@@ -453,15 +467,15 @@ export function createLumosDaemon(options: LumosDaemonOptions) {
       await startSustainedEffect(descriptor, status.effectSuppressed);
     },
 
-    async pokeLed(led: LedName) {
+    async pokeLed(led: LedName): Promise<void> {
       await pulseLed(led);
     },
 
-    async shutdown() {
+    async shutdown(): Promise<void> {
       await restoreOriginalState();
     },
 
-    async waitForIdle() {
+    async waitForIdle(): Promise<void> {
       await activeTask;
     },
 

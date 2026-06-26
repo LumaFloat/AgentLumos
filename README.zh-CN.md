@@ -52,7 +52,7 @@ npm install -g .
 
 需要 Node.js 20 或更高版本。
 
-## 30 秒测试
+## 快速开始
 
 在 PowerShell 里运行：
 
@@ -66,21 +66,21 @@ lumos demo
 # 设置物理 LED 从左到右的顺序。
 lumos config set leds num,caps,scroll
 
-# 显示 5 秒 active 动画。
-lumos active --ttl 5
+# 根据你使用的 agent 安装对应 hook。
+lumos hook install codex
+lumos hook install claude-code
 
-# 显示 5 秒 blocked 动画。
-lumos blocked --ttl 5
-
-# 显示 success 动画。
-lumos success
-
-# 显示 error 动画。
-lumos error
-
-# 停止动画并恢复原始 Lock 状态。
-lumos off
+# 检查 AgentLumos 和 agent hooks 是否就绪。
+lumos hook check
 ```
+
+## 基础使用
+
+AgentLumos 的主要使用路径是：先根据自己的键盘配置可见的 Lock 指示灯，再根据自己使用的 agent 安装对应 hook。之后 Codex 或 Claude Code 运行时会通过 hooks 自动触发 `active`、`blocked`、`success`、`error` 等状态，不需要日常手动执行状态命令。
+
+### 1. 配置你的键盘灯
+
+先运行 `lumos demo` 看哪些灯会动，再用 `lumos config set leds ...` 设置物理 LED 从左到右的顺序。
 
 如果你的键盘只有一两个可见的 Lock 灯，只配置可用的灯：
 
@@ -90,7 +90,30 @@ lumos config set leds caps
 
 # 使用 Caps Lock 和 Num Lock 指示灯。
 lumos config set leds caps,num
+
+# 常见三灯键盘：按实际从左到右顺序填写。
+lumos config set leds num,caps,scroll
 ```
+
+### 2. 安装对应 agent hook
+
+只安装你实际使用的 agent：
+
+```powershell
+# 安装 Codex hook handlers。
+lumos hook install codex
+
+# 安装 Claude Code hook handlers。
+lumos hook install claude-code
+```
+
+安装后运行：
+
+```powershell
+lumos hook check
+```
+
+如果检查结果提示缺少 `lumos` 命令，先确认已经执行过 `npm install -g .`，并重新打开 PowerShell。
 
 ## Agent hooks
 
@@ -119,20 +142,38 @@ lumos hook install claude-code
 - [Codex hooks 中文版](docs/zh-CN/hooks/codex.md)
 - [Claude Code hooks 中文版](docs/zh-CN/hooks/claude-code.md)
 
+## 验证和排障
+
+这些命令主要用于确认效果或排查问题，不是日常使用 AgentLumos 的主入口：
+
+```powershell
+# 播放内置动画，检查 LED 是否可控。
+lumos demo
+
+# 手动显示一个短状态，确认状态动画是否符合预期。
+lumos active --ttl 5
+lumos blocked --ttl 5
+lumos success
+lumos error
+
+# 单独测试一个 LED。
+lumos test caps
+
+# 停止当前动画并恢复原始 Lock 状态。
+lumos off
+
+# 重启后台 daemon。
+lumos daemon restart
+
+# 删除配置并在下次启动时重新生成默认配置。
+lumos config clean
+```
+
 ## CLI
 
-| 命令 | 作用 |
-| --- | --- |
-| `lumos status` | 查看 daemon 状态、已配置 LED、当前动画、TTL、驱动和最近错误。 |
-| `lumos demo` | 播放内置演示动画。 |
-| `lumos active` | 显示 agent 工作中状态。 |
-| `lumos blocked` | 显示等待用户输入状态。 |
-| `lumos success` | 显示完成状态。 |
-| `lumos error` | 显示失败状态。 |
-| `lumos off` | 停止动画并恢复原始 Lock 状态。 |
-| `lumos config get` | 查看当前配置。 |
-| `lumos config clean` | 删除配置文件，下次启动时重新生成默认配置。 |
-| `lumos hook check --json` | 以结构化 JSON 输出 hook 接入状态。 |
+运行 `lumos help` 查看命令、参数和选项。CLI 支持状态、诊断、daemon、配置和 hook 命令。命令错误会输出简洁信息，不打印 JavaScript stack trace。
+
+命令细节、退出码和平台行为请看 [CLI 参考](docs/zh-CN/cli.md)。
 
 ## 配置
 
@@ -167,7 +208,7 @@ lumos hook install claude-code
 
 AgentLumos 当前优先支持 Windows。当前驱动通过 Windows 输入行为控制键盘 Lock 指示灯。
 
-Linux 和 macOS 暂未实现。部分键盘、笔记本固件、KVM、远程桌面或厂商工具可能会用不同方式暴露 Lock 状态，也可能没有可见的 Lock 指示灯。
+Linux 和 macOS 硬件驱动暂未实现。部分键盘、笔记本固件、KVM、远程桌面或厂商工具可能会用不同方式暴露 Lock 状态，也可能没有可见的 Lock 指示灯。
 
 更长期的方向是通过一眼可见的硬件指示方式展示 agent 状态。后续可能探索键盘背光或 RGB 背光区域、专用外部状态灯硬件、跨平台驱动、更强的异常中断恢复、更完整的键盘兼容性记录和更多集成。
 
@@ -175,6 +216,7 @@ Linux 和 macOS 暂未实现。部分键盘、笔记本固件、KVM、远程桌�
 
 - [English README](README.md)
 - [中文文档目录](docs/zh-CN/)
+- [CLI 参考](docs/zh-CN/cli.md)
 - [Windows 手动测试指南中文版](docs/zh-CN/manual-windows-test.md)
 - [Codex hooks 中文版](docs/zh-CN/hooks/codex.md)
 - [Claude Code hooks 中文版](docs/zh-CN/hooks/claude-code.md)
