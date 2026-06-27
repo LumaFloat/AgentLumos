@@ -32,7 +32,7 @@ error    [●●●] [○○○] [●●●]   任务失败
 - **自动恢复状态**：执行动画前记录原始 Lock 状态，动画结束后恢复。
 - **操作时临时静音**：你开始打字或点击/拖拽鼠标时，LED 动画会暂时静音并恢复原始 Lock 状态；停止操作几秒后，如果 agent 状态仍有效，动画会继续。
 - **状态租约**：`active` 默认拥有 10 分钟租约，并会在新 hook 到来时续租；`blocked`、`success`、`error` 的默认 TTL 分别是 60 秒、10 秒和 20 秒，避免旧状态长时间残留。
-- **可配置**：可以配置 LED 顺序、状态 TTL、动画和 hook 映射。
+- **可配置**：可以配置 LED 顺序、状态 TTL、visual profile、动画和 hook 映射。
 - **Windows 原生**：使用当前 Windows 键盘 Lock 行为。
 
 ## 安装
@@ -63,8 +63,12 @@ lumos status
 # 预览内置动画。
 lumos show
 
+# 显式预览全部状态灯效，也可以临时指定 layout。
+lumos show demo
+lumos show demo --leds c
+
 # 设置物理 LED 从左到右的顺序。
-lumos config set leds num,caps,scroll
+lumos config set leds n,c,s
 
 # 根据你使用的 agent 安装对应 hook。
 lumos hook install codex
@@ -78,6 +82,8 @@ lumos hook check
 
 通常只需要先配置键盘上可见的 Lock 指示灯，再安装对应 agent 的 hook。之后 Codex 或 Claude Code 运行时会通过 hooks 自动触发 `active`、`blocked`、`success`、`error` 等状态，不需要日常手动执行状态命令。
 
+状态命令使用已配置的 LED 顺序。如需不修改配置临时预览不同 layout，使用 `lumos show --leds ...`。
+
 ### 1. 配置你的键盘灯
 
 先运行 `lumos show` 看哪些灯会动，再用 `lumos config set leds ...` 设置物理 LED 从左到右的顺序。
@@ -86,18 +92,20 @@ lumos hook check
 
 ```powershell
 # 只使用 Caps Lock 指示灯。
-lumos config set leds caps
+lumos config set leds c
 
 # 使用 Caps Lock 和 Num Lock 指示灯。
-lumos config set leds caps,num
+lumos config set leds c,n
 
 # 常见三灯键盘：按实际从左到右顺序填写。
-lumos config set leds num,caps,scroll
+lumos config set leds n,c,s
 ```
 
-AgentLumos 会根据已配置的可见灯数量自动适配内置状态动画。三灯布局保持完整默认动画；两灯布局使用左右移动和双灯脉冲；一灯布局使用不同的脉冲节奏，让 `active`、`blocked`、`success` 和 `error` 仍然容易区分。
+LED CLI 输入既支持完整名称（`caps`、`num`、`scroll`），也支持简写（`c`、`n`、`s`）。保存到配置时会规范化为完整名称。
 
-自定义动画不会被替换成内置降级动画。它们只会按已配置灯进行 selector 解析，并跳过连续重复的物理状态写入。
+AgentLumos 通过 visual profile 为一灯、两灯、三灯布局显式选择动画和速度。三灯布局保持完整默认动画；两灯布局使用左右移动和双灯脉冲；一灯布局使用不同节奏，让 `active`、`blocked`、`success` 和 `error` 仍然容易区分。
+
+动画会按 visual profile 的选择执行。renderer 负责把 LED selector 映射到已配置 LED，按 speed 缩放时间，并跳过连续重复的物理写入。
 
 ### 2. 安装对应 agent hook
 
@@ -161,7 +169,7 @@ lumos show success
 lumos show error
 
 # 单独测试一个 LED。
-lumos test caps
+lumos led test caps
 
 # 停止当前动画并恢复原始 Lock 状态。
 lumos off
@@ -170,7 +178,7 @@ lumos off
 lumos daemon restart
 
 # 删除配置并在下次启动时重新生成默认配置。
-lumos config clean
+lumos config reset
 ```
 
 ## CLI
@@ -192,7 +200,8 @@ lumos config clean
 | 字段 | 含义 |
 | --- | --- |
 | `leds` | 物理 Lock 灯从左到右的顺序。 |
-| `states` | 每个状态对应的动画和 TTL。 |
+| `states` | 每个状态对应的 TTL。 |
+| `visualProfiles` | 每个状态和 LED layout 对应的动画与速度。 |
 | `animations` | 可复用的 LED 动画定义。 |
 | `hookIntegrations` | Agent hook 事件到 AgentLumos 状态的映射。 |
 
@@ -206,7 +215,7 @@ lumos config clean
 - 延迟超过 5 分钟的待回放提醒会被丢弃。
 - `lumos off` 会清除当前可见状态和待回放状态。
 
-使用 `lumos config clean` 可以删除当前配置，并让 AgentLumos 在下次启动时重新生成默认配置。
+使用 `lumos config reset` 可以重置当前配置，并让 AgentLumos 在下次启动时重新生成默认配置。
 
 ## 平台与硬件支持
 

@@ -17,17 +17,28 @@ import type { LumosConfig } from "../../src/types";
 const defaultConfig = getDefaultConfig();
 
 describe("config defaults", () => {
-  it("provides the animation-based V0.1 default config", () => {
+  it("provides the visual-profile based V0.4 default config", () => {
     expect(defaultConfig).toMatchObject({
       leds: ["num", "caps", "scroll"],
       defaultTtl: "30m",
       states: {
-        active: { animation: "chase-rider", ttl: "10m" },
-        blocked: { animation: "prompt-shift", ttl: "60s" },
-        success: { animation: "embrace-confirm", ttl: "10s" },
-        error: { animation: "alert-triple", ttl: "20s" },
+        active: { ttl: "10m" },
+        blocked: { ttl: "60s" },
+        success: { ttl: "10s" },
+        error: { ttl: "20s" },
+      },
+      visualProfiles: {
+        active: {
+          oneLed: { animation: "heartbeat", speed: "slow" },
+          twoLed: { animation: "chase-pair", speed: "normal" },
+          threeLed: { animation: "chase-rider", speed: "normal" },
+        },
       },
       animations: {
+        heartbeat: { type: "sequence" },
+        "double-blink": { type: "sequence" },
+        confirm: { type: "sequence" },
+        "chase-pair": { type: "sequence" },
         "chase-rider": { type: "sequence" },
         "scan-pingpong": { type: "sequence" },
         "prompt-shift": { type: "sequence" },
@@ -103,7 +114,7 @@ describe("config validation", () => {
     ).toThrow(/led/i);
   });
 
-  it("rejects unknown animation references", () => {
+  it("rejects unknown visual profile animation references", () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), "agentlumos-config-"));
     const file = path.join(dir, "config.json");
 
@@ -111,14 +122,56 @@ describe("config validation", () => {
       saveConfig(
         {
           ...defaultConfig,
-          states: {
-            ...defaultConfig.states,
-            active: { animation: "missing-animation" },
+          visualProfiles: {
+            ...defaultConfig.visualProfiles,
+            active: {
+              oneLed: { animation: "missing-animation", speed: "normal" },
+              twoLed: { animation: "chase-rider", speed: "normal" },
+              threeLed: { animation: "chase-rider", speed: "normal" },
+            },
           },
         },
         file,
       ),
     ).toThrow(/unknown animation/i);
+  });
+
+  it("rejects incomplete visual profile layouts and invalid speed values", () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "agentlumos-config-"));
+    const file = path.join(dir, "config.json");
+
+    expect(() =>
+      saveConfig(
+        {
+          ...defaultConfig,
+          visualProfiles: {
+            ...defaultConfig.visualProfiles,
+            active: {
+              oneLed: { animation: "heartbeat", speed: "slow" },
+              twoLed: { animation: "chase-rider", speed: "normal" },
+            },
+          },
+        } as never,
+        file,
+      ),
+    ).toThrow(/threeLed/i);
+
+    expect(() =>
+      saveConfig(
+        {
+          ...defaultConfig,
+          visualProfiles: {
+            ...defaultConfig.visualProfiles,
+            error: {
+              oneLed: { animation: "alert-triple", speed: "turbo" },
+              twoLed: { animation: "alert-triple", speed: "normal" },
+              threeLed: { animation: "alert-triple", speed: "normal" },
+            },
+          },
+        } as never,
+        file,
+      ),
+    ).toThrow(/slow, normal, fast, urgent/i);
   });
 
   it("rejects invalid animation names and steps", () => {
@@ -204,7 +257,7 @@ describe("config updates", () => {
     expect(loadConfig(file).futureField).toBeUndefined();
   });
 
-  it("applies V0.1 patches using the current config schema", () => {
+  it("applies patches using the current config schema", () => {
     const existing = {
       ...defaultConfig,
       futureField: "kept",
@@ -215,6 +268,7 @@ describe("config updates", () => {
     ).toMatchObject({
       leds: ["caps", "num"],
       states: defaultConfig.states,
+      visualProfiles: defaultConfig.visualProfiles,
       animations: defaultConfig.animations,
       hookIntegrations: defaultConfig.hookIntegrations,
       defaultTtl: "30m",
@@ -222,29 +276,35 @@ describe("config updates", () => {
     expect(applyConfigPatch(existing, { leds: ["caps", "num"] }).futureField).toBeUndefined();
   });
 
-  it("merges animation and state patches", () => {
+  it("merges animation and visual profile patches", () => {
     const existing = { ...defaultConfig };
 
     expect(
       applyConfigPatch(existing, {
-        states: {
-          active: { animation: "custom-chase", ttl: "10m" },
-        } as never,
         animations: {
           "custom-chase": {
             type: "sequence",
             steps: [{ leds: ["caps"], onMs: 50, offMs: 50 }],
           },
         },
+        visualProfiles: {
+          active: {
+            oneLed: { animation: "custom-chase", speed: "fast" },
+            twoLed: { animation: "custom-chase", speed: "fast" },
+            threeLed: { animation: "custom-chase", speed: "fast" },
+          },
+        } as never,
       }),
     ).toMatchObject({
-      states: {
-        active: { animation: "custom-chase", ttl: "10m" },
-      },
       animations: {
         "custom-chase": {
           type: "sequence",
           steps: [{ leds: ["caps"], onMs: 50, offMs: 50 }],
+        },
+      },
+      visualProfiles: {
+        active: {
+          oneLed: { animation: "custom-chase", speed: "fast" },
         },
       },
     });
@@ -256,10 +316,6 @@ describe("config updates", () => {
     saveConfig(
       {
         ...defaultConfig,
-        states: {
-          ...defaultConfig.states,
-          active: { animation: "custom-chase", ttl: "10m" },
-        },
         animations: {
           ...defaultConfig.animations,
           "custom-chase": {

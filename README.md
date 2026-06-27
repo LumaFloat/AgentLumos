@@ -32,7 +32,7 @@ error    [●●●] [○○○] [●●●]   task failed
 - **Restores state**: captures the original Lock state and restores it after animations.
 - **Quiet while interacting**: temporarily suppresses LED animations while you type or click/drag the mouse, restores the original Lock state, and resumes after a short idle window if the agent state is still active.
 - **State leases**: `active` now defaults to a 10 minute lease and renews on new hooks; `blocked`, `success`, and `error` default to 60 seconds, 10 seconds, and 20 seconds so stale states do not linger.
-- **Configurable**: choose LED order, state TTLs, animations, and hook mappings.
+- **Configurable**: choose LED order, state TTLs, visual profiles, animations, and hook mappings.
 - **Windows native**: uses the current Windows keyboard Lock behavior.
 
 ## Install
@@ -63,8 +63,12 @@ lumos status
 # Preview the built-in animation sequence.
 lumos show
 
+# Explicitly preview all state effects, optionally with a temporary layout.
+lumos show demo
+lumos show demo --leds c
+
 # Set the physical LED order from left to right.
-lumos config set leds num,caps,scroll
+lumos config set leds n,c,s
 
 # Install the hook for the agent you use.
 lumos hook install codex
@@ -78,6 +82,8 @@ lumos hook check
 
 Usually you only need to configure the visible Lock LEDs on your keyboard, then install the hook for the agent you use. After that, Codex or Claude Code hooks trigger `active`, `blocked`, `success`, and `error` automatically. You should not need to run state commands manually during normal use.
 
+State commands use the configured LED order. Use `lumos show --leds ...` for temporary layout previews without changing saved config.
+
 ### 1. Configure Your Keyboard LEDs
 
 First run `lumos show` to see which lights move, then run `lumos config set leds ...` to match the physical LED order from left to right.
@@ -86,18 +92,20 @@ If your keyboard exposes fewer Lock LEDs, configure only the usable ones:
 
 ```powershell
 # Use only the Caps Lock LED.
-lumos config set leds caps
+lumos config set leds c
 
 # Use Caps Lock and Num Lock LEDs.
-lumos config set leds caps,num
+lumos config set leds c,n
 
 # Common three-LED keyboard: use your actual left-to-right order.
-lumos config set leds num,caps,scroll
+lumos config set leds n,c,s
 ```
 
-AgentLumos automatically adapts built-in status animations to the number of configured visible LEDs. Three-LED layouts keep the full default animation. Two-LED layouts use left/right movement and together-pulse patterns. One-LED layouts use distinct pulse rhythms so `active`, `blocked`, `success`, and `error` remain recognizable.
+LED CLI values accept full names (`caps`, `num`, `scroll`) or short aliases (`c`, `n`, `s`). Saved config is normalized to full names.
 
-Custom animations are not replaced by reduced built-ins. They are still resolved against the configured LEDs, and redundant consecutive physical states are skipped.
+AgentLumos uses visual profiles to choose an animation and speed for one-, two-, and three-LED layouts. Three-LED layouts keep the full default animations. Two-LED layouts use left/right movement and together-pulse patterns. One-LED layouts use distinct rhythms so `active`, `blocked`, `success`, and `error` remain recognizable.
+
+Animations are executed as selected by the visual profile. The renderer maps LED selectors to the configured LEDs, scales timing by the selected speed, and skips redundant consecutive physical writes.
 
 ### 2. Install The Agent Hook
 
@@ -161,7 +169,7 @@ lumos show success
 lumos show error
 
 # Test one LED directly.
-lumos test caps
+lumos led test caps
 
 # Stop the current animation and restore the original Lock state.
 lumos off
@@ -170,7 +178,7 @@ lumos off
 lumos daemon restart
 
 # Delete config and regenerate defaults on the next launch.
-lumos config clean
+lumos config reset
 ```
 
 ## CLI
@@ -192,7 +200,8 @@ Important fields:
 | Field | Meaning |
 | --- | --- |
 | `leds` | Physical Lock LED order from left to right. |
-| `states` | Animation and TTL for each state. |
+| `states` | TTL for each state. |
+| `visualProfiles` | Animation and speed for each state and LED layout. |
 | `animations` | Reusable LED animation definitions. |
 | `hookIntegrations` | Agent hook event to AgentLumos state mappings. |
 
@@ -206,7 +215,7 @@ Lease behavior:
 - Deferred reminders older than 5 minutes are discarded.
 - `lumos off` clears both visible and pending state.
 
-Use `lumos config clean` to remove the current config and let AgentLumos regenerate the default config on the next launch.
+Use `lumos config reset` to reset the current config and let AgentLumos regenerate the default config on the next launch.
 
 ## Platform and Hardware Support
 

@@ -1,5 +1,15 @@
 import { loadConfig, resetConfig, updateConfig } from "../config/config";
-import type { ActiveLumosState, AnimationName, DaemonRequest, DaemonResponse, LedName, LumosAnimationConfig } from "../types";
+import type {
+  ActiveLumosState,
+  AnimationName,
+  AnimationSpeed,
+  DaemonRequest,
+  DaemonResponse,
+  LedName,
+  LumosAnimationConfig,
+  LumosConfig,
+  VisualProfileLayout,
+} from "../types";
 import { parseTtl, parseTtlOrZero } from "../core/duration";
 
 interface DaemonController {
@@ -7,6 +17,7 @@ interface DaemonController {
     state: "idle" | ActiveLumosState,
     animationName?: AnimationName,
     animation?: LumosAnimationConfig,
+    speed?: AnimationSpeed,
     configuredLeds?: readonly LedName[],
     ttlMs?: number,
   ): Promise<void>;
@@ -34,13 +45,15 @@ export async function handleDaemonRequest(
 
       const config = loadConfig(configPath);
       const stateConfig = config.states[request.state];
-      const animationName = request.overrides?.animation ?? stateConfig.animation;
+      const configuredLeds = request.overrides?.leds ?? config.leds;
+      const profileLayout = resolveVisualProfileLayout(config, request.state, configuredLeds);
+      const animationName = profileLayout.animation;
       const animation = config.animations[animationName];
       if (!animation) {
         throw new Error(`Unknown animation: ${animationName}`);
       }
       const ttlMs = request.ttlMs ?? parseTtlOrZero(stateConfig.ttl ?? config.defaultTtl);
-      await daemon.setState(request.state, animationName, animation, request.overrides?.leds ?? config.leds, ttlMs);
+      await daemon.setState(request.state, animationName, animation, profileLayout.speed, configuredLeds, ttlMs);
       return ok();
     }
 
@@ -73,13 +86,14 @@ export async function handleDaemonRequest(
 
     if (request.type === "runDemo") {
       const config = loadConfig(configPath);
-      await runConfiguredState(daemon, "active", config.states.active.animation, config.animations[config.states.active.animation], config.leds, "2s");
+      const configuredLeds = request.overrides?.leds ?? config.leds;
+      await runConfiguredState(daemon, config, "active", configuredLeds, "2s");
       await daemon.waitForIdle();
-      await runConfiguredState(daemon, "blocked", config.states.blocked.animation, config.animations[config.states.blocked.animation], config.leds, "2s");
+      await runConfiguredState(daemon, config, "blocked", configuredLeds, "2s");
       await daemon.waitForIdle();
-      await runConfiguredState(daemon, "success", config.states.success.animation, config.animations[config.states.success.animation], config.leds, "2s");
+      await runConfiguredState(daemon, config, "success", configuredLeds, "2s");
       await daemon.waitForIdle();
-      await runConfiguredState(daemon, "error", config.states.error.animation, config.animations[config.states.error.animation], config.leds, "2s");
+      await runConfiguredState(daemon, config, "error", configuredLeds, "2s");
       await daemon.waitForIdle();
       await daemon.setState("idle");
       return ok();
@@ -99,17 +113,39 @@ export async function handleDaemonRequest(
   }
 }
 
+function resolveVisualProfileLayout(
+  config: LumosConfig,
+  state: ActiveLumosState,
+  configuredLeds: readonly LedName[],
+): VisualProfileLayout {
+  if (configuredLeds.length === 1) {
+    return config.visualProfiles[state].oneLed;
+  }
+
+  if (configuredLeds.length === 2) {
+    return config.visualProfiles[state].twoLed;
+  }
+
+  if (configuredLeds.length === 3) {
+    return config.visualProfiles[state].threeLed;
+  }
+
+  throw new Error(`Expected 1 to 3 configured LEDs, got ${configuredLeds.length}.`);
+}
+
 async function runConfiguredState(
   daemon: DaemonController,
+  config: LumosConfig,
   state: ActiveLumosState,
-  animationName: AnimationName,
-  animation: LumosAnimationConfig | undefined,
   configuredLeds: readonly LedName[],
   ttl: string,
 ): Promise<void> {
+  const profileLayout = resolveVisualProfileLayout(config, state, configuredLeds);
+  const animationName = profileLayout.animation;
+  const animation = config.animations[animationName];
   if (!animation) {
     throw new Error(`Unknown animation: ${animationName}`);
   }
 
-  await daemon.setState(state, animationName, animation, configuredLeds, parseTtl(ttl));
+  await daemon.setState(state, animationName, animation, profileLayout.speed, configuredLeds, parseTtl(ttl));
 }

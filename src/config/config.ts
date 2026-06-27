@@ -5,6 +5,7 @@ import type {
   ActiveLumosState,
   AnimationConfigMap,
   AnimationName,
+  AnimationSpeed,
   HookIntegrationConfig,
   HookIntegrationConfigMap,
   HookIntegrationName,
@@ -16,6 +17,9 @@ import type {
   LumosStateConfig,
   SequenceStepConfig,
   StateConfigMap,
+  VisualProfileConfig,
+  VisualProfileLayout,
+  VisualProfileMap,
 } from "../types";
 
 type ConfigDocument = LumosConfig & Record<string, unknown>;
@@ -32,12 +36,56 @@ const DEFAULT_CONFIG: LumosConfig = {
   leds: ["num", "caps", "scroll"],
   defaultTtl: "30m",
   states: {
-    active: { animation: "chase-rider", ttl: "10m" },
-    blocked: { animation: "prompt-shift", ttl: "60s" },
-    success: { animation: "embrace-confirm", ttl: "10s" },
-    error: { animation: "alert-triple", ttl: "20s" },
+    active: { ttl: "10m" },
+    blocked: { ttl: "60s" },
+    success: { ttl: "10s" },
+    error: { ttl: "20s" },
+  },
+  visualProfiles: {
+    active: {
+      oneLed: { animation: "heartbeat", speed: "slow" },
+      twoLed: { animation: "chase-pair", speed: "normal" },
+      threeLed: { animation: "chase-rider", speed: "normal" },
+    },
+    blocked: {
+      oneLed: { animation: "double-blink", speed: "normal" },
+      twoLed: { animation: "double-blink", speed: "normal" },
+      threeLed: { animation: "prompt-shift", speed: "normal" },
+    },
+    success: {
+      oneLed: { animation: "confirm", speed: "normal" },
+      twoLed: { animation: "confirm", speed: "normal" },
+      threeLed: { animation: "embrace-confirm", speed: "normal" },
+    },
+    error: {
+      oneLed: { animation: "alert-triple", speed: "fast" },
+      twoLed: { animation: "alert-triple", speed: "normal" },
+      threeLed: { animation: "alert-triple", speed: "normal" },
+    },
   },
   animations: {
+    heartbeat: {
+      type: "sequence",
+      steps: [{ leds: ["all"], onMs: 180, offMs: 1200 }],
+    },
+    "double-blink": {
+      type: "sequence",
+      steps: [
+        { leds: ["all"], onMs: 180, offMs: 120 },
+        { leds: ["all"], onMs: 180, offMs: 700 },
+      ],
+    },
+    confirm: {
+      type: "sequence",
+      steps: [{ leds: ["all"], onMs: 500, offMs: 1600 }],
+    },
+    "chase-pair": {
+      type: "sequence",
+      steps: [
+        { leds: ["first"], onMs: 180, offMs: 240 },
+        { leds: ["last"], onMs: 180, offMs: 1200 },
+      ],
+    },
     "chase-rider": {
       type: "sequence",
       steps: [
@@ -166,6 +214,9 @@ export function applyConfigPatch(
     leds: patch.leds ?? existing.leds,
     defaultTtl: patch.defaultTtl ?? existing.defaultTtl,
     states: patch.states ? mergeStates(existing.states, patch.states) : existing.states,
+    visualProfiles: patch.visualProfiles
+      ? mergeVisualProfiles(existing.visualProfiles, patch.visualProfiles)
+      : existing.visualProfiles,
     animations: patch.animations ? mergeAnimations(existing.animations, patch.animations) : existing.animations,
     hookIntegrations: patch.hookIntegrations
       ? mergeHookIntegrations(existing.hookIntegrations, patch.hookIntegrations)
@@ -194,13 +245,15 @@ function normalizeDocument(input: unknown): ConfigDocument {
   const leds = normalizeLeds(document.leds);
   const defaultTtl = normalizeDefaultTtl(document.defaultTtl);
   const animations = normalizeAnimations(document.animations);
-  const states = normalizeStates(document.states, animations);
+  const states = normalizeStates(document.states);
+  const visualProfiles = normalizeVisualProfiles(document.visualProfiles, animations);
   const hookIntegrations = normalizeHookIntegrations(document.hookIntegrations);
 
   return {
     leds,
     defaultTtl,
     states,
+    visualProfiles,
     animations,
     hookIntegrations,
   } as ConfigDocument;
@@ -249,7 +302,7 @@ function normalizeDefaultTtl(value: unknown): string {
   return value;
 }
 
-function normalizeStates(value: unknown, animations: AnimationConfigMap): StateConfigMap {
+function normalizeStates(value: unknown): StateConfigMap {
   if (value === undefined) {
     return cloneStates(DEFAULT_CONFIG.states);
   }
@@ -260,15 +313,74 @@ function normalizeStates(value: unknown, animations: AnimationConfigMap): StateC
 
   const states = value as Record<string, unknown>;
   return ACTIVE_STATES.reduce<StateConfigMap>((normalized, state) => {
-    normalized[state] = normalizeStateConfig(state, states[state], animations);
+    normalized[state] = normalizeStateConfig(state, states[state]);
     return normalized;
   }, {} as StateConfigMap);
+}
+
+function normalizeVisualProfiles(value: unknown, animations: AnimationConfigMap): VisualProfileMap {
+  if (value === undefined) {
+    return cloneVisualProfiles(DEFAULT_CONFIG.visualProfiles);
+  }
+
+  if (!isPlainObject(value)) {
+    throw new Error("visualProfiles must be a JSON object.");
+  }
+
+  const profiles = value as Record<string, unknown>;
+  return ACTIVE_STATES.reduce<VisualProfileMap>((normalized, state) => {
+    normalized[state] = normalizeVisualProfile(state, profiles[state], animations);
+    return normalized;
+  }, {} as VisualProfileMap);
+}
+
+function normalizeVisualProfile(
+  state: ActiveLumosState,
+  value: unknown,
+  animations: AnimationConfigMap,
+): VisualProfileConfig {
+  if (value === undefined) {
+    return cloneVisualProfile(DEFAULT_CONFIG.visualProfiles[state]);
+  }
+
+  if (!isPlainObject(value)) {
+    throw new Error(`Visual profile for ${state} must be a JSON object.`);
+  }
+
+  const profile = value as Record<string, unknown>;
+  return {
+    oneLed: normalizeVisualProfileLayout(state, "oneLed", profile.oneLed, animations),
+    twoLed: normalizeVisualProfileLayout(state, "twoLed", profile.twoLed, animations),
+    threeLed: normalizeVisualProfileLayout(state, "threeLed", profile.threeLed, animations),
+  };
+}
+
+function normalizeVisualProfileLayout(
+  state: ActiveLumosState,
+  layoutName: keyof VisualProfileConfig,
+  value: unknown,
+  animations: AnimationConfigMap,
+): VisualProfileLayout {
+  const label = `visualProfiles.${state}.${layoutName}`;
+  if (!isPlainObject(value)) {
+    throw new Error(`${label} must be a JSON object.`);
+  }
+
+  const layout = value as Record<string, unknown>;
+  const animation = normalizeAnimationName(layout.animation, `${label}.animation`);
+  if (!animations[animation]) {
+    throw new Error(`Unknown animation for ${label}: ${animation}`);
+  }
+
+  return {
+    animation,
+    speed: normalizeAnimationSpeed(layout.speed, `${label}.speed`),
+  };
 }
 
 function normalizeStateConfig(
   state: ActiveLumosState,
   value: unknown,
-  animations: AnimationConfigMap,
 ): LumosStateConfig {
   if (value === undefined) {
     return cloneStateConfig(DEFAULT_CONFIG.states[state]);
@@ -279,14 +391,7 @@ function normalizeStateConfig(
   }
 
   const config = value as Record<string, unknown>;
-  const animation = normalizeAnimationName(config.animation, `states.${state}.animation`);
-
-  if (!animations[animation]) {
-    throw new Error(`Unknown animation for ${state}: ${animation}`);
-  }
-
   return {
-    animation,
     ttl: config.ttl === undefined ? undefined : normalizeDefaultTtl(config.ttl),
   };
 }
@@ -422,6 +527,14 @@ function normalizeAnimationName(value: unknown, label: string): AnimationName {
   return value;
 }
 
+function normalizeAnimationSpeed(value: unknown, label: string): AnimationSpeed {
+  if (value === "slow" || value === "normal" || value === "fast" || value === "urgent") {
+    return value;
+  }
+
+  throw new Error(`${label} must be one of: slow, normal, fast, urgent.`);
+}
+
 function normalizeBoolean(value: unknown, label: string): boolean {
   if (typeof value !== "boolean") {
     throw new Error(`${label} must be a boolean.`);
@@ -475,6 +588,13 @@ function mergeAnimations(existing: AnimationConfigMap, patch: Partial<AnimationC
   return animations;
 }
 
+function mergeVisualProfiles(existing: VisualProfileMap, patch: Partial<VisualProfileMap>): VisualProfileMap {
+  return ACTIVE_STATES.reduce<VisualProfileMap>((profiles, state) => {
+    profiles[state] = patch[state] ?? existing[state];
+    return profiles;
+  }, {} as VisualProfileMap);
+}
+
 function mergeHookIntegrations(
   existing: HookIntegrationConfigMap,
   patch: Partial<HookIntegrationConfigMap>,
@@ -502,6 +622,7 @@ function cloneConfig(config: LumosConfig): LumosConfig {
     leds: [...config.leds],
     defaultTtl: config.defaultTtl,
     states: cloneStates(config.states),
+    visualProfiles: cloneVisualProfiles(config.visualProfiles),
     animations: cloneAnimations(config.animations),
     hookIntegrations: cloneHookIntegrations(config.hookIntegrations),
   };
@@ -512,8 +633,24 @@ function cloneDocument(config: LumosConfig): ConfigDocument {
     leds: [...config.leds],
     defaultTtl: config.defaultTtl,
     states: cloneStates(config.states),
+    visualProfiles: cloneVisualProfiles(config.visualProfiles),
     animations: cloneAnimations(config.animations),
     hookIntegrations: cloneHookIntegrations(config.hookIntegrations),
+  };
+}
+
+function cloneVisualProfiles(profiles: VisualProfileMap): VisualProfileMap {
+  return ACTIVE_STATES.reduce<VisualProfileMap>((cloned, state) => {
+    cloned[state] = cloneVisualProfile(profiles[state]);
+    return cloned;
+  }, {} as VisualProfileMap);
+}
+
+function cloneVisualProfile(profile: VisualProfileConfig): VisualProfileConfig {
+  return {
+    oneLed: { ...profile.oneLed },
+    twoLed: { ...profile.twoLed },
+    threeLed: { ...profile.threeLed },
   };
 }
 
@@ -526,7 +663,6 @@ function cloneStates(states: StateConfigMap): StateConfigMap {
 
 function cloneStateConfig(config: LumosStateConfig): LumosStateConfig {
   return {
-    animation: config.animation,
     ttl: config.ttl,
   };
 }

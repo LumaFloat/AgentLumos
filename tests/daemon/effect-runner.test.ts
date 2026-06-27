@@ -138,7 +138,7 @@ describe("runEffectLoop", () => {
     expect(driver.getWriteHistory().at(-1)).not.toEqual(original);
   });
 
-  it("plays the two-LED reduced built-in animation and restores the original full lock state", async () => {
+  it("plays the requested two-LED animation and restores the original full lock state", async () => {
     const originalState: LockState = { caps: false, num: true, scroll: true };
     const driver = createFakeKeyboardDriver(originalState);
 
@@ -163,6 +163,12 @@ describe("runEffectLoop", () => {
 
     expect(driver.getWriteHistory()).toEqual([
       { caps: true, num: true, scroll: true },
+      { caps: false, num: false, scroll: true },
+      { caps: true, num: false, scroll: true },
+      { caps: false, num: false, scroll: true },
+      { caps: true, num: true, scroll: true },
+      { caps: false, num: false, scroll: true },
+      { caps: true, num: false, scroll: true },
       { caps: false, num: false, scroll: true },
       originalState,
     ]);

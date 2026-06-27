@@ -34,7 +34,7 @@ lumos status
 lumos config get
 
 # Delete the config file so defaults are regenerated next time.
-lumos config clean
+lumos config reset
 
 # Preview built-in animations to verify LED control.
 lumos show
@@ -44,7 +44,7 @@ Confirm:
 
 - `lumos status` returns a stable, readable status object.
 - `lumos show` visibly changes at least one configured keyboard Lock LED.
-- `lumos config clean` removes old config so defaults can regenerate.
+- `lumos config reset` removes old config so defaults can regenerate.
 
 ## 3. Manual state test
 
@@ -92,7 +92,7 @@ Confirm:
 - `error` shows a more prominent failure animation.
 - `off` restores the original Lock state.
 
-## 4. Reduced LED layout test
+## 4. Visual profile layout test
 
 Run each layout on Windows hardware and confirm the original Lock state is restored after `lumos off` and TTL expiry.
 
@@ -143,7 +143,7 @@ lumos show error
 lumos off
 ```
 
-Expected: behavior matches the v0.3 three-LED default animations.
+Expected: behavior matches the default three-LED visual profiles.
 
 ## 5. Lease and suppression test
 
@@ -166,17 +166,17 @@ Confirm:
 - `blocked`, `success`, and `error` can replay once after the keyboard becomes idle if they expired while you were typing.
 - `lumos off` clears both the visible state and any pending reminder.
 
-## 6. Direct LED poke test
+## 6. Direct LED test
 
 ```powershell
 # Toggle Caps Lock once, like a manual key press.
-lumos poke caps
+lumos led test caps
 
 # Toggle Num Lock once, if the keyboard exposes it.
-lumos poke num
+lumos led test num
 
 # Toggle Scroll Lock once, if the keyboard exposes it.
-lumos poke scroll
+lumos led test scroll
 ```
 
 Confirm each available Lock LED toggles directly.

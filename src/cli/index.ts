@@ -7,7 +7,6 @@ import { parseTtlOrZero } from "../core/duration";
 import { createNamedPipeClient } from "../daemon/named-pipe-client";
 import { getDaemonPipePath } from "../daemon/pipe-path";
 import type {
-  AnimationName,
   DaemonRequest,
   DaemonResponse,
   HookIntegrationConfig,
@@ -69,8 +68,10 @@ type CliOperation =
 
 interface StateCommandOptions {
   ttl?: string;
+}
+
+interface LedOverrideOptions {
   leds?: string;
-  animation?: string;
 }
 
 interface HookCheckOptions {
@@ -155,30 +156,37 @@ function parseConfigValue(key: string, value: string): Partial<{ leds: LedName[]
   throw new CliUsageError(`Unsupported config key: ${key}`);
 }
 
-function buildStateRequest(state: Exclude<LumosState, "idle">, options: StateCommandOptions): DaemonRequest {
+function buildRuntimeOverrides(options: LedOverrideOptions): LumosStateOverride | undefined {
   const overrides: LumosStateOverride = {};
 
-  if (options.leds) {
+  if (options.leds !== undefined) {
     overrides.leds = parseLedList(options.leds);
   }
 
-  if (options.animation) {
-    overrides.animation = parseAnimationName(options.animation);
-  }
+  return Object.keys(overrides).length > 0 ? overrides : undefined;
+}
 
+function buildStateRequest(state: Exclude<LumosState, "idle">, options: StateCommandOptions): DaemonRequest {
   return {
     type: "setState",
     state,
     ttlMs: options.ttl ? parseTtlOrZero(options.ttl) : undefined,
-    overrides: Object.keys(overrides).length > 0 ? overrides : undefined,
   };
 }
 
-function buildShowStateRequest(state: Exclude<LumosState, "idle">): DaemonRequest {
+function buildShowStateRequest(state: Exclude<LumosState, "idle">, options: LedOverrideOptions): DaemonRequest {
   return {
     type: "setState",
     state,
     ttlMs: SHOW_STATE_TTL_MS,
+    overrides: buildRuntimeOverrides(options),
+  };
+}
+
+function buildShowDemoRequest(options: LedOverrideOptions): DaemonRequest {
+  return {
+    type: "runDemo",
+    overrides: buildRuntimeOverrides(options),
   };
 }
 
@@ -197,33 +205,53 @@ function parseLedList(value: string): LedName[] {
     .map((entry) => entry.trim())
     .filter(Boolean);
 
-  for (const led of leds) {
-    if (!isLedName(led)) {
-      throw new CliUsageError(`Invalid LED name: ${led}`);
-    }
+  if (leds.length === 0) {
+    throw new CliUsageError("At least one LED is required.");
   }
 
-  return leds as LedName[];
+  const normalized: LedName[] = [];
+  for (const led of leds) {
+    const normalizedLed = normalizeLedName(led);
+    if (!normalizedLed) {
+      throw new CliUsageError(`Invalid LED name: ${led}`);
+    }
+    normalized.push(normalizedLed);
+  }
+
+  return normalized;
 }
 
 function isLedName(value: string): value is LedName {
   return value === "caps" || value === "num" || value === "scroll";
 }
 
+function normalizeLedName(value: string): LedName | null {
+  if (isLedName(value)) {
+    return value;
+  }
+
+  if (value === "c") {
+    return "caps";
+  }
+
+  if (value === "n") {
+    return "num";
+  }
+
+  if (value === "s") {
+    return "scroll";
+  }
+
+  return null;
+}
+
 function parseLedName(value: string): LedName {
-  if (!isLedName(value)) {
+  const led = normalizeLedName(value);
+  if (!led) {
     throw new CliUsageError(`Invalid LED name: ${value}`);
   }
 
-  return value;
-}
-
-function parseAnimationName(value: string): AnimationName {
-  if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(value)) {
-    throw new CliUsageError(`Invalid animation name: ${value}`);
-  }
-
-  return value;
+  return led;
 }
 
 function parseHookIntegrationName(value: string): HookIntegrationName {
@@ -243,7 +271,7 @@ function parseActiveState(value: string): Exclude<LumosState, "idle"> {
 }
 
 function parseShowState(value: string | undefined): Exclude<LumosState, "idle"> | null {
-  if (!value) {
+  if (!value || value === "demo") {
     return null;
   }
 
@@ -293,14 +321,15 @@ function createProgram(setOperation: (operation: CliOperation) => void, deps: Cl
     .command("show [state]")
     .description("Preview LED effects.")
     .allowExcessArguments(false)
-    .action((state?: string) => {
+    .option("--leds <list>", "runtime LED list")
+    .action((state: string | undefined, options: LedOverrideOptions) => {
       const parsedState = parseShowState(state);
       if (parsedState) {
-        setDaemonRequest(setOperation, buildShowStateRequest(parsedState), { retryOnConnectFailure: true });
+        setDaemonRequest(setOperation, buildShowStateRequest(parsedState, options), { retryOnConnectFailure: true });
         return;
       }
 
-      setDaemonRequest(setOperation, { type: "runDemo" }, { retryOnConnectFailure: true });
+      setDaemonRequest(setOperation, buildShowDemoRequest(options), { retryOnConnectFailure: true });
     });
 
   program
@@ -308,8 +337,6 @@ function createProgram(setOperation: (operation: CliOperation) => void, deps: Cl
     .description("Set agent state for hooks or scripts.")
     .allowExcessArguments(false)
     .option("--ttl <duration>", "state TTL")
-    .option("--leds <list>", "runtime LED list")
-    .option("--animation <name>", "runtime animation name")
     .action((state: string, options: StateCommandOptions) => {
       setDaemonRequest(setOperation, buildStateRequest(parseActiveState(state), options), { retryOnConnectFailure: true });
     });
@@ -322,15 +349,14 @@ function createProgram(setOperation: (operation: CliOperation) => void, deps: Cl
       setDaemonRequest(setOperation, { type: "setState", state: "idle" }, { retryOnConnectFailure: true });
     });
 
-  for (const commandName of ["poke", "test"] as const) {
-    program
-      .command(`${commandName} <led>`)
-      .description("Toggle one LED for diagnostics.")
-      .allowExcessArguments(false)
-      .action((led: string) => {
-        setDaemonRequest(setOperation, { type: "pokeLed", led: parseLedName(led) }, { retryOnConnectFailure: true });
-      });
-  }
+  const led = program.command("led").description("Diagnose physical LED behavior.");
+  led
+    .command("test <led>")
+    .description("Toggle one LED for diagnostics.")
+    .allowExcessArguments(false)
+    .action((ledName: string) => {
+      setDaemonRequest(setOperation, { type: "pokeLed", led: parseLedName(ledName) }, { retryOnConnectFailure: true });
+    });
 
   program
     .command("status")
@@ -368,7 +394,7 @@ function createProgram(setOperation: (operation: CliOperation) => void, deps: Cl
       });
     });
   config
-    .command("clean")
+    .command("reset")
     .allowExcessArguments(false)
     .action(() => {
       setDaemonRequest(setOperation, { type: "resetConfig" }, {
@@ -428,7 +454,10 @@ async function parseOperation(argv: string[], deps: CliDeps): Promise<CliOperati
   }
 
   if (argv[0] === "set") {
-    rejectDuplicateOptions(argv.slice(2), ["--ttl", "--leds", "--animation"]);
+    rejectDuplicateOptions(argv.slice(2), ["--ttl"]);
+  }
+  if (argv[0] === "show") {
+    rejectDuplicateOptions(argv.slice(1), ["--leds"]);
   }
 
   try {

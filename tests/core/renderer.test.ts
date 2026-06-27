@@ -198,73 +198,31 @@ describe("renderState", () => {
     ]);
   });
 
-  it("uses one-LED reduced active rhythm for chase-rider", () => {
-    expect(renderDefault("chase-rider", ["caps"])).toEqual([
-      { atMs: 0, values: { caps: true } },
-      { atMs: 180, values: { caps: false } },
-    ]);
-  });
-
-  it("uses one-LED reduced blocked rhythm for prompt-shift", () => {
-    expect(renderDefault("prompt-shift", ["caps"])).toEqual([
-      { atMs: 0, values: { caps: true } },
-      { atMs: 180, values: { caps: false } },
-      { atMs: 300, values: { caps: true } },
-      { atMs: 480, values: { caps: false } },
-    ]);
-  });
-
-  it("uses one-LED reduced success rhythm for embrace-confirm", () => {
-    expect(renderDefault("embrace-confirm", ["caps"])).toEqual([
-      { atMs: 0, values: { caps: true } },
-      { atMs: 500, values: { caps: false } },
-    ]);
-  });
-
-  it("uses one-LED reduced error rhythm for alert-triple", () => {
-    expect(renderDefault("alert-triple", ["caps"])).toEqual([
-      { atMs: 0, values: { caps: true } },
-      { atMs: 120, values: { caps: false } },
-      { atMs: 220, values: { caps: true } },
-      { atMs: 340, values: { caps: false } },
-      { atMs: 440, values: { caps: true } },
-      { atMs: 560, values: { caps: false } },
-    ]);
-  });
-
-  it("uses two-LED reduced active movement for chase-rider", () => {
+  it("renders the requested animation without layout-specific replacement", () => {
     expect(renderDefault("chase-rider", ["caps", "num"])).toEqual([
       { atMs: 0, values: { caps: true, num: false } },
       { atMs: 180, values: { caps: false, num: false } },
-      { atMs: 420, values: { caps: false, num: true } },
+      { atMs: 420, values: { caps: true, num: false } },
       { atMs: 600, values: { caps: false, num: false } },
+      { atMs: 840, values: { caps: false, num: true } },
+      { atMs: 1020, values: { caps: false, num: false } },
     ]);
   });
 
-  it("uses two-LED reduced blocked rhythm for prompt-shift", () => {
-    expect(renderDefault("prompt-shift", ["caps", "num"])).toEqual([
-      { atMs: 0, values: { caps: true, num: true } },
-      { atMs: 180, values: { caps: false, num: false } },
-      { atMs: 300, values: { caps: true, num: true } },
-      { atMs: 480, values: { caps: false, num: false } },
-    ]);
-  });
-
-  it("uses two-LED reduced success rhythm for embrace-confirm", () => {
-    expect(renderDefault("embrace-confirm", ["caps", "num"])).toEqual([
-      { atMs: 0, values: { caps: true, num: true } },
-      { atMs: 500, values: { caps: false, num: false } },
-    ]);
-  });
-
-  it("uses two-LED reduced error rhythm for alert-triple", () => {
-    expect(renderDefault("alert-triple", ["caps", "num"])).toEqual([
-      { atMs: 0, values: { caps: true, num: true } },
-      { atMs: 120, values: { caps: false, num: false } },
-      { atMs: 220, values: { caps: true, num: true } },
-      { atMs: 340, values: { caps: false, num: false } },
-      { atMs: 440, values: { caps: true, num: true } },
-      { atMs: 560, values: { caps: false, num: false } },
+  it("scales animation timings with speed", () => {
+    expect(
+      renderState({
+        state: "error",
+        animationName: "custom-speed",
+        animation: chase,
+        speed: "fast",
+        configuredLeds: ["caps", "num"],
+      }),
+    ).toEqual([
+      { atMs: 0, values: { caps: true, num: false } },
+      { atMs: 68, values: { caps: false, num: false } },
+      { atMs: 158, values: { caps: false, num: true } },
+      { atMs: 226, values: { caps: false, num: false } },
     ]);
   });
 

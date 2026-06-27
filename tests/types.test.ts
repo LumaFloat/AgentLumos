@@ -2,17 +2,55 @@ import { describe, expect, it } from "vitest";
 import type { DaemonRequest, LumosConfig } from "../src/types";
 
 describe("shared types", () => {
-  it("allows the default V0.1 config shape", () => {
+  it("allows the default V0.4 config shape", () => {
     const config: LumosConfig = {
       leds: ["num", "caps", "scroll"],
       defaultTtl: "30m",
       states: {
-        active: { animation: "chase-rider", ttl: "10m" },
-        blocked: { animation: "prompt-shift", ttl: "60s" },
-        success: { animation: "embrace-confirm", ttl: "10s" },
-        error: { animation: "alert-triple", ttl: "20s" },
+        active: { ttl: "10m" },
+        blocked: { ttl: "60s" },
+        success: { ttl: "10s" },
+        error: { ttl: "20s" },
+      },
+      visualProfiles: {
+        active: {
+          oneLed: { animation: "heartbeat", speed: "slow" },
+          twoLed: { animation: "chase-pair", speed: "normal" },
+          threeLed: { animation: "chase-rider", speed: "normal" },
+        },
+        blocked: {
+          oneLed: { animation: "double-blink", speed: "normal" },
+          twoLed: { animation: "double-blink", speed: "normal" },
+          threeLed: { animation: "prompt-shift", speed: "normal" },
+        },
+        success: {
+          oneLed: { animation: "confirm", speed: "normal" },
+          twoLed: { animation: "confirm", speed: "normal" },
+          threeLed: { animation: "embrace-confirm", speed: "normal" },
+        },
+        error: {
+          oneLed: { animation: "alert-triple", speed: "fast" },
+          twoLed: { animation: "alert-triple", speed: "normal" },
+          threeLed: { animation: "alert-triple", speed: "normal" },
+        },
       },
       animations: {
+        heartbeat: {
+          type: "sequence",
+          steps: [{ leds: ["all"], onMs: 180, offMs: 1200 }],
+        },
+        "double-blink": {
+          type: "sequence",
+          steps: [{ leds: ["all"], onMs: 180, offMs: 120 }],
+        },
+        confirm: {
+          type: "sequence",
+          steps: [{ leds: ["all"], onMs: 500, offMs: 1600 }],
+        },
+        "chase-pair": {
+          type: "sequence",
+          steps: [{ leds: ["first"], onMs: 180, offMs: 240 }],
+        },
         "chase-rider": {
           type: "sequence",
           steps: [{ leds: ["first"], onMs: 90, offMs: 120 }],
@@ -60,7 +98,6 @@ describe("shared types", () => {
       ttlMs: 30 * 60 * 1000,
       overrides: {
         leds: ["caps", "num"],
-        animation: "scan-pingpong",
       },
     };
 

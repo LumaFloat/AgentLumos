@@ -82,16 +82,64 @@ describe("runCli", () => {
     expect(stdout.join("")).toContain("show");
     expect(stdout.join("")).toContain("set");
     expect(stdout.join("")).toContain("hook");
+    expect(stdout.join("")).toContain("led");
+  });
+
+  it("prints LED diagnostics help", async () => {
+    const stdout: string[] = [];
+
+    const exitCode = await runCli(["led", "--help"], {
+      createClient: () => {
+        throw new Error("should not connect");
+      },
+      spawnDaemon: async () => {},
+      stdout: { write: async (chunk: string) => { stdout.push(chunk); } },
+      stderr: { write: async () => true },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdout.join("")).toContain("Diagnose physical LED behavior");
+    expect(stdout.join("")).toContain("test");
+  });
+
+  it("shows LED overrides for preview help but not state-setting help", async () => {
+    const showStdout: string[] = [];
+    const showExitCode = await runCli(["show", "--help"], {
+      createClient: () => {
+        throw new Error("should not connect");
+      },
+      spawnDaemon: async () => {},
+      stdout: { write: async (chunk: string) => { showStdout.push(chunk); } },
+      stderr: { write: async () => true },
+    });
+
+    const setStdout: string[] = [];
+    const setExitCode = await runCli(["set", "--help"], {
+      createClient: () => {
+        throw new Error("should not connect");
+      },
+      spawnDaemon: async () => {},
+      stdout: { write: async (chunk: string) => { setStdout.push(chunk); } },
+      stderr: { write: async () => true },
+    });
+
+    expect(showExitCode).toBe(0);
+    expect(showStdout.join("")).toContain("--leds <list>");
+    expect(setExitCode).toBe(0);
+    expect(setStdout.join("")).not.toContain("--leds <list>");
   });
 
   it.each([
     [["set", "active", "--wat"], "unknown option"],
+    [["set", "active", "--leds", "caps"], "unknown option"],
     [["set", "active", "--ttl"], "argument missing"],
     [["set", "active", "--ttl", "5s", "--ttl", "6s"], "Duplicate option: --ttl"],
     [["show", "idle"], "Invalid state: idle"],
     [["off", "extra"], "too many arguments"],
     [["status", "--json"], "unknown option"],
-    [["poke", "caps", "num"], "too many arguments"],
+    [["led", "test", "caps", "num"], "too many arguments"],
+    [["test", "caps"], "unknown command"],
+    [["poke", "caps"], "unknown command"],
     [["daemon", "stop", "extra"], "too many arguments"],
     [["config", "get", "extra"], "too many arguments"],
     [["hook", "install", "codex", "extra"], "too many arguments"],
@@ -215,39 +263,6 @@ describe("runCli", () => {
     ]);
   });
 
-  it("sends runtime overrides ahead of config", async () => {
-    const clientFactory = createClientFactory([{ ok: true }]);
-    const exitCode = await runCli([
-      "set",
-      "active",
-      "--ttl",
-      "5s",
-      "--leds",
-      "caps,num",
-      "--animation",
-      "scan-pingpong",
-    ], {
-      platform: "win32",
-      createClient: clientFactory.createClient,
-      spawnDaemon: async () => {},
-      stdout: { write: async () => true },
-      stderr: { write: async () => true },
-    });
-
-    expect(exitCode).toBe(0);
-    expect(clientFactory.requests).toEqual([
-      {
-        type: "setState",
-        state: "active",
-        ttlMs: 5_000,
-        overrides: {
-          leds: ["caps", "num"],
-          animation: "scan-pingpong",
-        },
-      },
-    ]);
-  });
-
   it("treats ttl zero as an infinite request", async () => {
     const clientFactory = createClientFactory([{ ok: true }]);
     const exitCode = await runCli(["set", "active", "--ttl", "0"], {
@@ -280,7 +295,35 @@ describe("runCli", () => {
     });
 
     expect(exitCode).toBe(0);
-    expect(clientFactory.requests).toEqual([{ type: "runDemo" }]);
+    expect(clientFactory.requests).toEqual([{ type: "runDemo", overrides: undefined }]);
+  });
+
+  it("runs the built-in preview sequence with show demo", async () => {
+    const clientFactory = createClientFactory([{ ok: true }]);
+    const exitCode = await runCli(["show", "demo", "--leds", "caps"], {
+      platform: "win32",
+      createClient: clientFactory.createClient,
+      spawnDaemon: async () => {},
+      stdout: { write: async () => true },
+      stderr: { write: async () => true },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(clientFactory.requests).toEqual([{ type: "runDemo", overrides: { leds: ["caps"] } }]);
+  });
+
+  it("accepts short LED aliases for preview overrides", async () => {
+    const clientFactory = createClientFactory([{ ok: true }]);
+    const exitCode = await runCli(["show", "demo", "--leds", "c,n"], {
+      platform: "win32",
+      createClient: clientFactory.createClient,
+      spawnDaemon: async () => {},
+      stdout: { write: async () => true },
+      stderr: { write: async () => true },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(clientFactory.requests).toEqual([{ type: "runDemo", overrides: { leds: ["caps", "num"] } }]);
   });
 
   it("previews one state with show", async () => {
@@ -295,13 +338,29 @@ describe("runCli", () => {
 
     expect(exitCode).toBe(0);
     expect(clientFactory.requests).toEqual([
-      { type: "setState", state: "blocked", ttlMs: 2_000 },
+      { type: "setState", state: "blocked", ttlMs: 2_000, overrides: undefined },
     ]);
   });
 
-  it("sends a direct LED poke request", async () => {
+  it("previews one state with a runtime LED override", async () => {
     const clientFactory = createClientFactory([{ ok: true }]);
-    const exitCode = await runCli(["poke", "num"], {
+    const exitCode = await runCli(["show", "active", "--leds", "caps,num"], {
+      platform: "win32",
+      createClient: clientFactory.createClient,
+      spawnDaemon: async () => {},
+      stdout: { write: async () => true },
+      stderr: { write: async () => true },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(clientFactory.requests).toEqual([
+      { type: "setState", state: "active", ttlMs: 2_000, overrides: { leds: ["caps", "num"] } },
+    ]);
+  });
+
+  it("sends a direct LED test request", async () => {
+    const clientFactory = createClientFactory([{ ok: true }]);
+    const exitCode = await runCli(["led", "test", "num"], {
       platform: "win32",
       createClient: clientFactory.createClient,
       spawnDaemon: async () => {},
@@ -408,7 +467,34 @@ describe("runCli", () => {
     ]);
   });
 
-  it("sends config clean as a resetConfig request", async () => {
+  it("normalizes short LED aliases in config values and direct LED commands", async () => {
+    const configClient = createClientFactory([{ ok: true }]);
+    const configExit = await runCli(["config", "set", "leds", "c n s"], {
+      platform: "win32",
+      createClient: configClient.createClient,
+      spawnDaemon: async () => {},
+      stdout: { write: async () => true },
+      stderr: { write: async () => true },
+    });
+
+    const pokeClient = createClientFactory([{ ok: true }]);
+    const pokeExit = await runCli(["led", "test", "c"], {
+      platform: "win32",
+      createClient: pokeClient.createClient,
+      spawnDaemon: async () => {},
+      stdout: { write: async () => true },
+      stderr: { write: async () => true },
+    });
+
+    expect(configExit).toBe(0);
+    expect(configClient.requests).toEqual([
+      { type: "setConfig", patch: { leds: ["caps", "num", "scroll"] } },
+    ]);
+    expect(pokeExit).toBe(0);
+    expect(pokeClient.requests).toEqual([{ type: "pokeLed", led: "caps" }]);
+  });
+
+  it("sends config reset as a resetConfig request", async () => {
     const stdout: string[] = [];
     const clientFactory = createClientFactory([
       {
@@ -419,7 +505,7 @@ describe("runCli", () => {
         },
       },
     ]);
-    const exitCode = await runCli(["config", "clean"], {
+    const exitCode = await runCli(["config", "reset"], {
       platform: "win32",
       createClient: clientFactory.createClient,
       spawnDaemon: async () => {},
@@ -431,6 +517,21 @@ describe("runCli", () => {
     expect(clientFactory.requests).toEqual([{ type: "resetConfig" }]);
     expect(stdout.join("")).toContain('"deleted": true');
     expect(stdout.join("")).toContain('"path"');
+  });
+
+  it("does not expose the old config clean command", async () => {
+    const stderr: string[] = [];
+    const exitCode = await runCli(["config", "clean"], {
+      createClient: () => {
+        throw new Error("should not connect");
+      },
+      spawnDaemon: async () => {},
+      stdout: { write: async () => true },
+      stderr: { write: async (chunk: string) => { stderr.push(chunk); } },
+    });
+
+    expect(exitCode).toBe(2);
+    expect(stderr.join("")).toContain("unknown command");
   });
 
   it("prints hook integration config", async () => {

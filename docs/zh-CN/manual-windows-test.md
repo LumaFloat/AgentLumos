@@ -34,7 +34,7 @@ lumos status
 lumos config get
 
 # 删除配置文件，让下次启动重新生成默认配置。
-lumos config clean
+lumos config reset
 
 # 预览内置动画，确认键盘灯是否响应。
 lumos show
@@ -44,7 +44,7 @@ lumos show
 
 - `lumos status` 是否稳定返回当前状态对象。
 - `lumos show` 是否能驱动键盘指示灯变化。
-- `lumos config clean` 是否删除旧配置并让下次启动回到默认值。
+- `lumos config reset` 是否删除旧配置并让下次启动回到默认值。
 
 ## 4. 租约与静音测试
 
@@ -113,7 +113,7 @@ lumos off
 - `error` 是否是更醒目的失败提示。
 - `off` 是否恢复到原始 Lock 状态。
 
-## 6. 少灯布局测试
+## 6. Visual profile layout 测试
 
 在 Windows 实体键盘上运行每种布局，并确认 `lumos off` 和 TTL 结束后会恢复原始 Lock 状态。
 
@@ -164,7 +164,7 @@ lumos show error
 lumos off
 ```
 
-预期：行为和 v0.3 三灯默认动画一致。
+预期：行为符合默认三灯 visual profile。
 
 ## 7. Hook 测试
 

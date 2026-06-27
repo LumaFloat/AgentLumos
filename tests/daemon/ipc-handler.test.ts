@@ -22,15 +22,15 @@ const status: LumosStatus = {
 };
 
 describe("handleDaemonRequest", () => {
-  it("dispatches state requests to the daemon with resolved animations", async () => {
+  it("dispatches state requests to the daemon with resolved visual profiles", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agentlumos-ipc-"));
     const configPath = path.join(dir, "config.json");
     saveConfig(config, configPath);
     const calls: Array<[string, unknown]> = [];
     const response = await handleDaemonRequest(
       {
-        setState: async (state, animationName, animation, configuredLeds, ttlMs) => {
-          calls.push(["setState", { state, animationName, animation, configuredLeds, ttlMs }]);
+        setState: async (state, animationName, animation, speed, configuredLeds, ttlMs) => {
+          calls.push(["setState", { state, animationName, animation, speed, configuredLeds, ttlMs }]);
         },
         pokeLed: async () => {},
         getStatus: async () => status,
@@ -42,7 +42,7 @@ describe("handleDaemonRequest", () => {
         type: "setState",
         state: "active",
         ttlMs: 5_000,
-        overrides: { leds: ["num"], animation: "scan-pingpong" },
+        overrides: { leds: ["num"] },
       },
     );
 
@@ -52,8 +52,9 @@ describe("handleDaemonRequest", () => {
         "setState",
         {
           state: "active",
-          animationName: "scan-pingpong",
-          animation: config.animations["scan-pingpong"],
+          animationName: "heartbeat",
+          animation: config.animations.heartbeat,
+          speed: "slow",
           configuredLeds: ["num"],
           ttlMs: 5000,
         },
@@ -68,8 +69,8 @@ describe("handleDaemonRequest", () => {
     const calls: Array<[string, unknown]> = [];
     const response = await handleDaemonRequest(
       {
-        setState: async (state, animationName, animation, configuredLeds, ttlMs) => {
-          calls.push(["setState", { state, animationName, animation, configuredLeds, ttlMs }]);
+        setState: async (state, animationName, animation, speed, configuredLeds, ttlMs) => {
+          calls.push(["setState", { state, animationName, animation, speed, configuredLeds, ttlMs }]);
         },
         pokeLed: async () => {},
         getStatus: async () => status,
@@ -92,6 +93,7 @@ describe("handleDaemonRequest", () => {
           state: "active",
           animationName: "chase-rider",
           animation: config.animations["chase-rider"],
+          speed: "normal",
           configuredLeds: ["num", "caps", "scroll"],
           ttlMs: 0,
         },
@@ -123,6 +125,43 @@ describe("handleDaemonRequest", () => {
 
     expect(response).toEqual({ ok: true });
     expect(calls).toEqual([["pokeLed", { led: "scroll" }]]);
+  });
+
+  it("resolves demo previews through visual profiles with runtime LED overrides", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agentlumos-ipc-"));
+    const configPath = path.join(dir, "config.json");
+    saveConfig(config, configPath);
+    const calls: Array<[string, unknown]> = [];
+    const response = await handleDaemonRequest(
+      {
+        setState: async (state, animationName, animation, speed, configuredLeds, ttlMs) => {
+          calls.push(["setState", { state, animationName, animation, speed, configuredLeds, ttlMs }]);
+        },
+        pokeLed: async () => {},
+        getStatus: async () => status,
+        shutdown: async () => {},
+        waitForIdle: async () => {},
+      },
+      configPath,
+      {
+        type: "runDemo",
+        overrides: { leds: ["caps"] },
+      },
+    );
+
+    expect(response).toEqual({ ok: true });
+    expect(calls[0]).toEqual([
+      "setState",
+      {
+        state: "active",
+        animationName: "heartbeat",
+        animation: config.animations.heartbeat,
+        speed: "slow",
+        configuredLeds: ["caps"],
+        ttlMs: 2000,
+      },
+    ]);
+    expect(calls.at(-1)).toEqual(["setState", { state: "idle" }]);
   });
 
   it("returns the daemon status and config", async () => {

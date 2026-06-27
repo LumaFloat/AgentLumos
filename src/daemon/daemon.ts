@@ -1,7 +1,7 @@
 import type { KeyboardDriver } from "../drivers/keyboard/driver";
 import type { InputActivityMonitor, InputActivitySubscription } from "../drivers/input/activity-monitor";
 import { createNoopInputActivityMonitor } from "../drivers/input/activity-monitor";
-import type { AnimationName, LedName, LockState, LumosAnimationConfig, LumosState, LumosStatus } from "../types";
+import type { AnimationName, AnimationSpeed, LedName, LockState, LumosAnimationConfig, LumosState, LumosStatus } from "../types";
 import { runEffectLoop, type EffectClock } from "./effect-runner";
 import { cloneLockState, createIdleStatus } from "./status";
 
@@ -20,6 +20,7 @@ export interface LumosDaemon {
     state: LumosState,
     animationName?: AnimationName,
     animation?: LumosAnimationConfig,
+    speed?: AnimationSpeed,
     configuredLeds?: readonly LedName[],
     ttlMs?: number,
   ): Promise<void>;
@@ -35,6 +36,7 @@ interface EffectDescriptor {
   state: ActiveState;
   animationName: AnimationName;
   animation: LumosAnimationConfig;
+  speed: AnimationSpeed;
   configuredLeds: readonly LedName[];
   ttlMs: number;
   receivedAt: number;
@@ -144,6 +146,7 @@ export function createLumosDaemon(options: LumosDaemonOptions): LumosDaemon {
     state: ActiveState,
     animationName: AnimationName,
     animation: LumosAnimationConfig,
+    speed: AnimationSpeed,
     configuredLeds: readonly LedName[],
     ttlMs: number,
   ): EffectDescriptor {
@@ -152,6 +155,7 @@ export function createLumosDaemon(options: LumosDaemonOptions): LumosDaemon {
       state,
       animationName,
       animation,
+      speed,
       configuredLeds: [...configuredLeds],
       ttlMs,
       receivedAt,
@@ -301,6 +305,7 @@ export function createLumosDaemon(options: LumosDaemonOptions): LumosDaemon {
       reminder.state,
       reminder.animationName,
       reminder.animation,
+      reminder.speed,
       reminder.configuredLeds,
       minimumReminderMs(reminder.state),
     );
@@ -388,6 +393,7 @@ export function createLumosDaemon(options: LumosDaemonOptions): LumosDaemon {
         state: descriptor.state,
         animationName: descriptor.animationName,
         animation: descriptor.animation,
+        speed: descriptor.speed,
         configuredLeds: descriptor.configuredLeds,
         originalLockState: snapshot,
         ttlMs: descriptor.ttlMs,
@@ -452,6 +458,7 @@ export function createLumosDaemon(options: LumosDaemonOptions): LumosDaemon {
       state: LumosState,
       animationName?: AnimationName,
       animation?: LumosAnimationConfig,
+      speed: AnimationSpeed = "normal",
       configuredLeds: readonly LedName[] = options.configuredLeds,
       ttlMs = defaultTtlMs,
     ): Promise<void> {
@@ -464,7 +471,7 @@ export function createLumosDaemon(options: LumosDaemonOptions): LumosDaemon {
         throw new Error(`Missing config for state: ${state}`);
       }
 
-      const descriptor = createEffectDescriptor(state, animationName, animation, configuredLeds, ttlMs);
+      const descriptor = createEffectDescriptor(state, animationName, animation, speed, configuredLeds, ttlMs);
       await startSustainedEffect(descriptor, status.effectSuppressed);
     },
 

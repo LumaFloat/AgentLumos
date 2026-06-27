@@ -4,6 +4,7 @@ export type LumosState = "idle" | "active" | "blocked" | "success" | "error";
 export type ActiveLumosState = Exclude<LumosState, "idle">;
 export type AnimationType = "sequence";
 export type AnimationName = string;
+export type AnimationSpeed = "slow" | "normal" | "fast" | "urgent";
 export type HookIntegrationName = "codex" | "claude-code";
 
 export type LockState = Record<LedName, boolean>;
@@ -20,12 +21,23 @@ export interface LumosAnimationConfig {
 }
 
 export interface LumosStateConfig {
-  animation: AnimationName;
   ttl?: string;
+}
+
+export interface VisualProfileLayout {
+  animation: AnimationName;
+  speed: AnimationSpeed;
+}
+
+export interface VisualProfileConfig {
+  oneLed: VisualProfileLayout;
+  twoLed: VisualProfileLayout;
+  threeLed: VisualProfileLayout;
 }
 
 export type StateConfigMap = Record<ActiveLumosState, LumosStateConfig>;
 export type AnimationConfigMap = Record<AnimationName, LumosAnimationConfig>;
+export type VisualProfileMap = Record<ActiveLumosState, VisualProfileConfig>;
 export type HookIntegrationMap = Record<string, LumosState>;
 
 export interface HookIntegrationConfig {
@@ -37,13 +49,13 @@ export type HookIntegrationConfigMap = Record<HookIntegrationName, HookIntegrati
 
 export interface LumosStateOverride {
   leds?: LedName[];
-  animation?: AnimationName;
 }
 
 export interface LumosConfig {
   leds: LedName[];
   defaultTtl: string;
   states: StateConfigMap;
+  visualProfiles: VisualProfileMap;
   animations: AnimationConfigMap;
   hookIntegrations: HookIntegrationConfigMap;
 }
@@ -74,7 +86,7 @@ export type DaemonRequest =
   | { type: "setConfig"; patch: Partial<LumosConfig> }
   | { type: "resetConfig" }
   | { type: "shutdown" }
-  | { type: "runDemo" };
+  | { type: "runDemo"; overrides?: LumosStateOverride };
 
 export type DaemonResponse =
   | { ok: true; warning?: string; data?: unknown }

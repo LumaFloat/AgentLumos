@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 import { createLumosDaemon } from "../../src/daemon/daemon";
 import { createFakeKeyboardDriver } from "../../src/drivers/keyboard/fake";
 import type { InputActivityMonitorStartOptions } from "../../src/drivers/input/activity-monitor";
@@ -118,7 +118,7 @@ describe("createLumosDaemon", () => {
       clock,
     });
 
-    await daemon.setState("active", "chase-rider", animation, ["caps"], 5_000);
+    await daemon.setState("active", "chase-rider", animation, "normal", ["caps"], 5_000);
     expect(daemon.getStatus()).toMatchObject({
       state: "active",
       configuredLeds: ["caps"],
@@ -128,7 +128,7 @@ describe("createLumosDaemon", () => {
       pendingReminder: false,
     });
 
-    await daemon.setState("blocked", "prompt-shift", animation, ["num"], 5_000);
+    await daemon.setState("blocked", "prompt-shift", animation, "normal", ["num"], 5_000);
     expect(daemon.getStatus()).toMatchObject({
       state: "blocked",
       configuredLeds: ["num"],
@@ -148,7 +148,7 @@ describe("createLumosDaemon", () => {
       clock,
     });
 
-    await daemon.setState("active", "chase-rider", animation, ["caps"], 5_000);
+    await daemon.setState("active", "chase-rider", animation, "normal", ["caps"], 5_000);
     await daemon.setState("idle");
     await daemon.waitForIdle();
 
@@ -171,7 +171,7 @@ describe("createLumosDaemon", () => {
       clock,
     });
 
-    await daemon.setState("active", "chase-rider", animation, ["caps"]);
+    await daemon.setState("active", "chase-rider", animation, "normal", ["caps"]);
 
     expect(daemon.getStatus()).toMatchObject({
       state: "active",
@@ -189,7 +189,7 @@ describe("createLumosDaemon", () => {
       clock,
     });
 
-    await daemon.setState("active", "chase-rider", animation, ["caps"], 1_000);
+    await daemon.setState("active", "chase-rider", animation, "normal", ["caps"], 1_000);
     await clock.advance(250);
 
     expect(daemon.getStatus()).toMatchObject({
@@ -207,9 +207,9 @@ describe("createLumosDaemon", () => {
       clock,
     });
 
-    await daemon.setState("active", "chase-rider", animation, ["caps"], 1_000);
+    await daemon.setState("active", "chase-rider", animation, "normal", ["caps"], 1_000);
     await clock.advance(900);
-    await daemon.setState("active", "chase-rider", animation, ["caps"], 1_000);
+    await daemon.setState("active", "chase-rider", animation, "normal", ["caps"], 1_000);
 
     expect(daemon.getStatus()).toMatchObject({
       state: "active",
@@ -227,7 +227,7 @@ describe("createLumosDaemon", () => {
       clock,
     });
 
-    await daemon.setState("success", "embrace-confirm", animation, ["caps"], 2_000);
+    await daemon.setState("success", "embrace-confirm", animation, "normal", ["caps"], 2_000);
 
     expect(daemon.getStatus()).toMatchObject({
       state: "success",
@@ -253,7 +253,7 @@ describe("createLumosDaemon", () => {
       clock,
     });
 
-    await daemon.setState("active", "chase-rider", animation, ["caps"], 5_000);
+    await daemon.setState("active", "chase-rider", animation, "normal", ["caps"], 5_000);
     await clock.advance(100);
     await daemon.waitForIdle();
 
@@ -273,7 +273,7 @@ describe("createLumosDaemon", () => {
       clock,
     });
 
-    await daemon.setState("active", "chase-rider", animation, [], 5_000);
+    await daemon.setState("active", "chase-rider", animation, "normal", [], 5_000);
 
     expect(daemon.getStatus()).toMatchObject({
       state: "active",
@@ -294,7 +294,7 @@ describe("createLumosDaemon", () => {
       clock,
     });
 
-    await daemon.setState("blocked", "prompt-shift", animation, [], 1_000);
+    await daemon.setState("blocked", "prompt-shift", animation, "normal", [], 1_000);
     await clock.advance(1_001);
 
     expect(daemon.getStatus()).toMatchObject({
@@ -337,7 +337,7 @@ describe("createLumosDaemon", () => {
       inputActivityMonitor: inputActivity.monitor,
     });
 
-    await daemon.setState("active", "chase-rider", animation, ["caps"], 5_000);
+    await daemon.setState("active", "chase-rider", animation, "normal", ["caps"], 5_000);
     await inputActivity.triggerActivity();
 
     expect(daemon.getStatus()).toMatchObject({
@@ -361,9 +361,9 @@ describe("createLumosDaemon", () => {
       inputActivityMonitor: inputActivity.monitor,
     });
 
-    await daemon.setState("error", "alert-triple", animation, ["caps"], 20_000);
+    await daemon.setState("error", "alert-triple", animation, "normal", ["caps"], 20_000);
     await inputActivity.triggerActivity();
-    await daemon.setState("success", "embrace-confirm", animation, ["caps"], 10_000);
+    await daemon.setState("success", "embrace-confirm", animation, "normal", ["caps"], 10_000);
 
     expect(daemon.getStatus()).toMatchObject({
       state: "success",
@@ -385,7 +385,7 @@ describe("createLumosDaemon", () => {
       inputActivityMonitor: inputActivity.monitor,
     });
 
-    await daemon.setState("blocked", "prompt-shift", animation, ["caps"], 5_000);
+    await daemon.setState("blocked", "prompt-shift", animation, "normal", ["caps"], 5_000);
     await inputActivity.triggerActivity();
     await inputActivity.triggerIdle();
 
@@ -408,7 +408,7 @@ describe("createLumosDaemon", () => {
       inputActivityMonitor: inputActivity.monitor,
     });
 
-    await daemon.setState("active", "chase-rider", slowAnimation, ["caps"], 1_000);
+    await daemon.setState("active", "chase-rider", slowAnimation, "normal", ["caps"], 1_000);
     await inputActivity.triggerActivity();
     await clock.advance(1_001);
     await inputActivity.triggerIdle();
@@ -433,7 +433,7 @@ describe("createLumosDaemon", () => {
       inputActivityMonitor: inputActivity.monitor,
     });
 
-    await daemon.setState("error", "alert-triple", slowAnimation, ["caps"], 1_000);
+    await daemon.setState("error", "alert-triple", slowAnimation, "normal", ["caps"], 1_000);
     await inputActivity.triggerActivity();
     await clock.advance(1_001);
     await inputActivity.triggerIdle();
@@ -458,8 +458,8 @@ describe("createLumosDaemon", () => {
       inputActivityMonitor: inputActivity.monitor,
     });
 
-    await daemon.setState("active", "chase-rider", animation, ["caps"], 5_000);
-    await daemon.setState("success", "embrace-confirm", animation, ["caps"], 5_000);
+    await daemon.setState("active", "chase-rider", animation, "normal", ["caps"], 5_000);
+    await daemon.setState("success", "embrace-confirm", animation, "normal", ["caps"], 5_000);
     await inputActivity.triggerActivity(0);
 
     expect(inputActivity.getStartCount()).toBe(2);
@@ -483,7 +483,7 @@ describe("createLumosDaemon", () => {
       inputActivityMonitor: inputActivity.monitor,
     });
 
-    await daemon.setState("active", "chase-rider", animation, ["caps"], 5_000);
+    await daemon.setState("active", "chase-rider", animation, "normal", ["caps"], 5_000);
 
     expect(inputActivity.getStartOptions(0).ignoredLeds).toEqual(["caps"]);
   });
@@ -511,11 +511,11 @@ describe("createLumosDaemon", () => {
       clock,
     });
 
-    await daemon.setState("active", "chase-rider", animation, ["caps"], 5_000);
+    await daemon.setState("active", "chase-rider", animation, "normal", ["caps"], 5_000);
     delayOriginalRestore = true;
     const idle = daemon.setState("idle");
     await clock.flush();
-    await daemon.setState("success", "embrace-confirm", animation, ["caps"], 5_000);
+    await daemon.setState("success", "embrace-confirm", animation, "normal", ["caps"], 5_000);
 
     restoreWrite.resolve();
     await idle;
@@ -553,9 +553,9 @@ describe("createLumosDaemon", () => {
       clock,
     });
 
-    const staleStart = daemon.setState("active", "chase-rider", animation, ["caps"], 5_000);
+    const staleStart = daemon.setState("active", "chase-rider", animation, "normal", ["caps"], 5_000);
     await clock.flush();
-    const latestStart = daemon.setState("success", "embrace-confirm", animation, ["caps"], 5_000);
+    const latestStart = daemon.setState("success", "embrace-confirm", animation, "normal", ["caps"], 5_000);
     await latestStart;
     firstRead.resolve(firstSnapshot);
     await staleStart;
@@ -585,7 +585,7 @@ describe("createLumosDaemon", () => {
       inputActivityMonitor: inputActivity.monitor,
     });
 
-    await daemon.setState(state, animationName, animation, ["caps"], 1_000);
+    await daemon.setState(state, animationName, animation, "normal", ["caps"], 1_000);
     await inputActivity.triggerActivity();
     await clock.advance(1_001);
 
@@ -619,7 +619,7 @@ describe("createLumosDaemon", () => {
       inputActivityMonitor: inputActivity.monitor,
     });
 
-    await daemon.setState("error", "custom-error", animation, ["caps"], 1_000);
+    await daemon.setState("error", "custom-error", animation, "normal", ["caps"], 1_000);
     await inputActivity.triggerActivity();
     await clock.advance(1_001);
     await clock.advance(5 * 60 * 1000 + 1);
@@ -644,7 +644,7 @@ describe("createLumosDaemon", () => {
       inputActivityMonitor: inputActivity.monitor,
     });
 
-    await daemon.setState("blocked", "prompt-shift", animation, ["caps"], 1_000);
+    await daemon.setState("blocked", "prompt-shift", animation, "normal", ["caps"], 1_000);
     await inputActivity.triggerActivity();
     await clock.advance(1_001);
     await daemon.setState("idle");
