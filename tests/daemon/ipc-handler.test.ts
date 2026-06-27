@@ -11,6 +11,7 @@ const config = getDefaultConfig();
 const status: LumosStatus = {
   daemon: "running",
   state: "idle",
+  kind: null,
   configuredLeds: ["caps", "num", "scroll"],
   activeAnimation: null,
   ttlRemainingMs: null,
@@ -40,7 +41,7 @@ describe("handleDaemonRequest", () => {
       configPath,
       {
         type: "setState",
-        state: "active",
+        state: "working",
         ttlMs: 5_000,
         overrides: { leds: ["num"] },
       },
@@ -51,7 +52,7 @@ describe("handleDaemonRequest", () => {
       [
         "setState",
         {
-          state: "active",
+          state: "working",
           animationName: "heartbeat",
           animation: config.animations.heartbeat,
           speed: "slow",
@@ -80,7 +81,7 @@ describe("handleDaemonRequest", () => {
       configPath,
       {
         type: "setState",
-        state: "active",
+        state: "working",
         ttlMs: 0,
       },
     );
@@ -90,7 +91,7 @@ describe("handleDaemonRequest", () => {
       [
         "setState",
         {
-          state: "active",
+          state: "working",
           animationName: "chase-rider",
           animation: config.animations["chase-rider"],
           speed: "normal",
@@ -127,6 +128,47 @@ describe("handleDaemonRequest", () => {
     expect(calls).toEqual([["pokeLed", { led: "scroll" }]]);
   });
 
+  it("uses state-kind visual profiles when a kind is provided", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agentlumos-ipc-"));
+    const configPath = path.join(dir, "config.json");
+    saveConfig(config, configPath);
+    const calls: Array<[string, unknown]> = [];
+    const response = await handleDaemonRequest(
+      {
+        setState: async (state, animationName, animation, speed, configuredLeds, ttlMs, kind) => {
+          calls.push(["setState", { state, animationName, animation, speed, configuredLeds, ttlMs, kind }]);
+        },
+        pokeLed: async () => {},
+        getStatus: async () => status,
+        shutdown: async () => {},
+        waitForIdle: async () => {},
+      },
+      configPath,
+      {
+        type: "setState",
+        state: "working",
+        kind: "command",
+        ttlMs: 5_000,
+      },
+    );
+
+    expect(response).toEqual({ ok: true });
+    expect(calls).toEqual([
+      [
+        "setState",
+        {
+          state: "working",
+          animationName: "scan-pingpong",
+          animation: config.animations["scan-pingpong"],
+          speed: "fast",
+          configuredLeds: ["num", "caps", "scroll"],
+          ttlMs: 5000,
+          kind: "command",
+        },
+      ],
+    ]);
+  });
+
   it("resolves demo previews through visual profiles with runtime LED overrides", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agentlumos-ipc-"));
     const configPath = path.join(dir, "config.json");
@@ -146,6 +188,7 @@ describe("handleDaemonRequest", () => {
       {
         type: "runDemo",
         overrides: { leds: ["caps"] },
+        ignoreInputSuppression: true,
       },
     );
 
@@ -153,12 +196,12 @@ describe("handleDaemonRequest", () => {
     expect(calls[0]).toEqual([
       "setState",
       {
-        state: "active",
+        state: "working",
         animationName: "heartbeat",
         animation: config.animations.heartbeat,
         speed: "slow",
         configuredLeds: ["caps"],
-        ttlMs: 2000,
+        ttlMs: 3000,
       },
     ]);
     expect(calls.at(-1)).toEqual(["setState", { state: "idle" }]);

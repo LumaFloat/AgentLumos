@@ -1,15 +1,15 @@
-# Codex hooks
+﻿# Codex hooks
 
 AgentLumos 不会包装或替换 `codex`。它只把 Codex 的原生 hooks 映射到 LED 状态。
 
 ## 默认映射
 
-- `SessionStart` -> `lumos set active`
-- `UserPromptSubmit` -> `lumos set active`
-- `PreToolUse` -> `lumos set active`
-- `PostToolUse` -> `lumos set active`
-- `PermissionRequest` -> `lumos set blocked`
-- `Stop` -> `lumos set success`
+- `SessionStart` -> `lumos set working -k preparing`
+- `UserPromptSubmit` -> `lumos set working -k preparing`
+- `PreToolUse` -> `lumos set working -k tool`
+- `PostToolUse` -> `lumos set working`
+- `PermissionRequest` -> `lumos set blocked -k permission`
+- `Stop` -> `lumos set success -k turn`
 
 当前不提供“推理中”这类单独状态，因为 Codex 暴露的稳定 hook 里没有对应的通用事件。
 

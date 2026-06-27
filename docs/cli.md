@@ -1,4 +1,4 @@
-# AgentLumos CLI Reference
+﻿# AgentLumos CLI Reference
 
 ## Help
 
@@ -12,8 +12,8 @@ Use `lumos help`, `lumos --help`, or `lumos -h` to print the available commands 
 | `lumos status` | Show daemon state, selected LEDs, current animation, TTL, driver, and last error. |
 | `lumos show [--leds <list>]` | Preview the built-in LED sequence. Same as `lumos show demo`. |
 | `lumos show demo [--leds <list>]` | Preview all built-in state effects in sequence. |
-| `lumos show <state> [--leds <list>]` | Preview one state effect. `<state>` is `active`, `blocked`, `success`, or `error`. |
-| `lumos set <state> [--ttl <duration>]` | Set the current agent state for hooks or scripts. `<state>` is `active`, `blocked`, `success`, or `error`. |
+| `lumos show <state> [-k <kind>] [--leds <list>]` | Preview one state or state-kind effect. `<state>` is `working`, `blocked`, `success`, or `error`; `state.kind` input is also accepted. |
+| `lumos set <state> [-k <kind>] [--ttl <duration>]` | Set the current agent state for hooks or scripts. `<state>` is `working`, `blocked`, `success`, or `error`. |
 | `lumos off` | Stop the animation and restore the original Lock state. |
 | `lumos led test <led>` | Toggle one LED for diagnostics. |
 | `lumos daemon stop` | Stop the background daemon. |
@@ -36,11 +36,13 @@ Use `lumos help`, `lumos --help`, or `lumos -h` to print the available commands 
 | Option | Meaning |
 | --- | --- |
 | `--leds <list>` | Runtime LED override for this preview, for example `caps`, `caps,num`, or `num,caps,scroll`. It does not change saved config. |
+| `-k, --kind <kind>` | Preview a state-kind profile, for example `lumos show working -k command`. |
 
 `lumos set` supports these options:
 
 | Option | Meaning |
 | --- | --- |
+| `-k, --kind <kind>` | Optional state kind, such as `command`, `tool`, `permission`, `turn`, or `critical`. The kind must be valid for the selected state. |
 | `--ttl <duration>` | State lifetime for this command. Supports `5`, `5s`, `30m`, `2h`; a value without a unit means seconds. State commands also support `0`. |
 
 `<led>` must be `caps`, `num`, or `scroll`. CLI input also accepts short aliases: `c` for `caps`, `n` for `num`, and `s` for `scroll`. Config values are normalized to full LED names.
@@ -76,6 +78,14 @@ lumos led test caps
 
 # Preview the blocked effect.
 lumos show blocked
+
+# Preview a state-kind effect.
+lumos show working.command
+lumos show error -k critical
+
+# Set a more specific state kind.
+lumos set working -k command
+lumos set blocked -k permission
 
 # Preview all effects on a one-LED layout without changing config.
 lumos show demo --leds c

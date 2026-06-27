@@ -1,16 +1,26 @@
 import { loadConfig, resetConfig, updateConfig } from "../config/config";
+import { parseTtl, parseTtlOrZero } from "../core/duration";
+import { assertValidStateKind } from "../state";
 import type {
   ActiveLumosState,
-  AnimationName,
-  AnimationSpeed,
   DaemonRequest,
   DaemonResponse,
   LedName,
-  LumosAnimationConfig,
   LumosConfig,
+  LumosAnimationConfig,
+  LumosStateOverride,
+  LumosStateKind,
+  VisualProfileKey,
   VisualProfileLayout,
 } from "../types";
-import { parseTtl, parseTtlOrZero } from "../core/duration";
+import type { AnimationName, AnimationSpeed } from "../types";
+
+interface ResolvedEffect {
+  animationName: AnimationName;
+  animation: LumosAnimationConfig;
+  speed: AnimationSpeed;
+  configuredLeds: readonly LedName[];
+}
 
 interface DaemonController {
   setState(
@@ -20,6 +30,8 @@ interface DaemonController {
     speed?: AnimationSpeed,
     configuredLeds?: readonly LedName[],
     ttlMs?: number,
+    kind?: LumosStateKind,
+    ignoreInputSuppression?: boolean,
   ): Promise<void>;
   pokeLed(led: LedName): Promise<void>;
   getStatus(): unknown | Promise<unknown>;
@@ -43,17 +55,21 @@ export async function handleDaemonRequest(
         return ok();
       }
 
+      assertValidStateKind(request.state, request.kind);
       const config = loadConfig(configPath);
       const stateConfig = config.states[request.state];
-      const configuredLeds = request.overrides?.leds ?? config.leds;
-      const profileLayout = resolveVisualProfileLayout(config, request.state, configuredLeds);
-      const animationName = profileLayout.animation;
-      const animation = config.animations[animationName];
-      if (!animation) {
-        throw new Error(`Unknown animation: ${animationName}`);
-      }
+      const effect = resolveConfiguredEffect(config, request.state, request.kind, request.overrides);
       const ttlMs = request.ttlMs ?? parseTtlOrZero(stateConfig.ttl ?? config.defaultTtl);
-      await daemon.setState(request.state, animationName, animation, profileLayout.speed, configuredLeds, ttlMs);
+      await daemon.setState(
+        request.state,
+        effect.animationName,
+        effect.animation,
+        effect.speed,
+        effect.configuredLeds,
+        ttlMs,
+        request.kind,
+        request.ignoreInputSuppression,
+      );
       return ok();
     }
 
@@ -86,14 +102,13 @@ export async function handleDaemonRequest(
 
     if (request.type === "runDemo") {
       const config = loadConfig(configPath);
-      const configuredLeds = request.overrides?.leds ?? config.leds;
-      await runConfiguredState(daemon, config, "active", configuredLeds, "2s");
+      await runConfiguredState(daemon, config, "working", request.overrides, "3s", request.ignoreInputSuppression);
       await daemon.waitForIdle();
-      await runConfiguredState(daemon, config, "blocked", configuredLeds, "2s");
+      await runConfiguredState(daemon, config, "blocked", request.overrides, "3s", request.ignoreInputSuppression);
       await daemon.waitForIdle();
-      await runConfiguredState(daemon, config, "success", configuredLeds, "2s");
+      await runConfiguredState(daemon, config, "success", request.overrides, "3s", request.ignoreInputSuppression);
       await daemon.waitForIdle();
-      await runConfiguredState(daemon, config, "error", configuredLeds, "2s");
+      await runConfiguredState(daemon, config, "error", request.overrides, "3s", request.ignoreInputSuppression);
       await daemon.waitForIdle();
       await daemon.setState("idle");
       return ok();
@@ -115,37 +130,69 @@ export async function handleDaemonRequest(
 
 function resolveVisualProfileLayout(
   config: LumosConfig,
-  state: ActiveLumosState,
+  profileKey: VisualProfileKey,
   configuredLeds: readonly LedName[],
 ): VisualProfileLayout {
+  const profile = config.visualProfiles[profileKey];
+  if (!profile) {
+    throw new Error(`Missing visual profile: ${profileKey}.`);
+  }
+
   if (configuredLeds.length === 1) {
-    return config.visualProfiles[state].oneLed;
+    return profile.oneLed;
   }
 
   if (configuredLeds.length === 2) {
-    return config.visualProfiles[state].twoLed;
+    return profile.twoLed;
   }
 
   if (configuredLeds.length === 3) {
-    return config.visualProfiles[state].threeLed;
+    return profile.threeLed;
   }
 
   throw new Error(`Expected 1 to 3 configured LEDs, got ${configuredLeds.length}.`);
 }
 
-async function runConfiguredState(
-  daemon: DaemonController,
+function resolveConfiguredEffect(
   config: LumosConfig,
   state: ActiveLumosState,
-  configuredLeds: readonly LedName[],
-  ttl: string,
-): Promise<void> {
-  const profileLayout = resolveVisualProfileLayout(config, state, configuredLeds);
+  kind?: LumosStateKind,
+  overrides?: LumosStateOverride,
+): ResolvedEffect {
+  const configuredLeds = overrides?.leds ?? config.leds;
+  const profileKey = kind ? `${state}.${kind}` as VisualProfileKey : state;
+  const profileLayout = resolveVisualProfileLayout(config, profileKey, configuredLeds);
   const animationName = profileLayout.animation;
   const animation = config.animations[animationName];
   if (!animation) {
     throw new Error(`Unknown animation: ${animationName}`);
   }
 
-  await daemon.setState(state, animationName, animation, profileLayout.speed, configuredLeds, parseTtl(ttl));
+  return {
+    animationName,
+    animation,
+    speed: profileLayout.speed,
+    configuredLeds,
+  };
+}
+
+async function runConfiguredState(
+  daemon: DaemonController,
+  config: LumosConfig,
+  state: ActiveLumosState,
+  overrides: LumosStateOverride | undefined,
+  ttl: string,
+  ignoreInputSuppression = false,
+): Promise<void> {
+  const effect = resolveConfiguredEffect(config, state, undefined, overrides);
+  await daemon.setState(
+    state,
+    effect.animationName,
+    effect.animation,
+    effect.speed,
+    effect.configuredLeds,
+    parseTtl(ttl),
+    undefined,
+    ignoreInputSuppression,
+  );
 }

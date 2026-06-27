@@ -1,4 +1,4 @@
-# AgentLumos CLI 参考
+﻿# AgentLumos CLI 参考
 
 ## 帮助
 
@@ -12,8 +12,8 @@
 | `lumos status` | 查看 daemon 状态、已配置 LED、当前动画、TTL、驱动和最近错误。 |
 | `lumos show [--leds <list>]` | 预览内置 LED 动画序列。等同于 `lumos show demo`。 |
 | `lumos show demo [--leds <list>]` | 依次预览所有内置状态灯效。 |
-| `lumos show <state> [--leds <list>]` | 预览一个状态灯效。`<state>` 可选 `active`、`blocked`、`success`、`error`。 |
-| `lumos set <state> [--ttl <duration>]` | 为 hook 或脚本设置当前 agent 状态。`<state>` 可选 `active`、`blocked`、`success`、`error`。 |
+| `lumos show <state> [-k <kind>] [--leds <list>]` | 预览一个状态或 state-kind 灯效。`<state>` 可选 `working`、`blocked`、`success`、`error`；也支持 `state.kind` 写法。 |
+| `lumos set <state> [-k <kind>] [--ttl <duration>]` | 为 hook 或脚本设置当前 agent 状态。`<state>` 可选 `working`、`blocked`、`success`、`error`。 |
 | `lumos off` | 停止动画并恢复原始 Lock 状态。 |
 | `lumos led test <led>` | 切换一个 LED，用于诊断。 |
 | `lumos daemon stop` | 停止后台 daemon。 |
@@ -36,11 +36,13 @@
 | 参数 | 说明 |
 | --- | --- |
 | `--leds <list>` | 本次预览临时覆盖 LED 列表，例如 `caps`、`caps,num`、`num,caps,scroll`。它不会修改已保存配置。 |
+| `-k, --kind <kind>` | 预览某个 state-kind profile，例如 `lumos show working -k command`。 |
 
 `lumos set` 支持这些可选参数：
 
 | 参数 | 说明 |
 | --- | --- |
+| `-k, --kind <kind>` | 可选的状态细分类，例如 `command`、`tool`、`permission`、`turn` 或 `critical`。kind 必须适用于所选 state。 |
 | `--ttl <duration>` | 本次状态的有效时间。支持 `5`、`5s`、`30m`、`2h`；没有单位时默认按秒处理。状态命令也支持 `0`。 |
 
 `<led>` 可选值是 `caps`、`num`、`scroll`。CLI 输入也支持简写：`c` 表示 `caps`，`n` 表示 `num`，`s` 表示 `scroll`。配置值会规范化为完整 LED 名称。
@@ -76,6 +78,14 @@ lumos led test caps
 
 # 预览 blocked 灯效。
 lumos show blocked
+
+# 预览 state-kind 灯效。
+lumos show working.command
+lumos show error -k critical
+
+# 设置更细的状态 kind。
+lumos set working -k command
+lumos set blocked -k permission
 
 # 不修改配置，临时按一灯 layout 预览全部效果。
 lumos show demo --leds c

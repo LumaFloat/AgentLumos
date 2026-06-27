@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -130,10 +130,16 @@ describe("runCli", () => {
   });
 
   it.each([
-    [["set", "active", "--wat"], "unknown option"],
-    [["set", "active", "--leds", "caps"], "unknown option"],
-    [["set", "active", "--ttl"], "argument missing"],
-    [["set", "active", "--ttl", "5s", "--ttl", "6s"], "Duplicate option: --ttl"],
+    [["set", "working", "--wat"], "unknown option"],
+    [["set", "working", "--leds", "caps"], "unknown option"],
+    [["set", "working", "--ttl"], "argument missing"],
+    [["set", "working", "--ttl", "5s", "--ttl", "6s"], "Duplicate option: --ttl"],
+    [["set", "working", "-k", "permission"], "kind must be valid for state working"],
+    [["set", "working", "-k", "unknown"], "kind must be valid for state working"],
+    [["show", "working", "-k", "permission"], "kind must be valid for state working"],
+    [["show", "working.command", "-k", "tool"], "Duplicate kind"],
+    [["show", "demo", "-k", "command"], "Demo preview does not support kind"],
+    [["set", "active"], "Invalid state: active"],
     [["show", "idle"], "Invalid state: idle"],
     [["off", "extra"], "too many arguments"],
     [["status", "--json"], "unknown option"],
@@ -211,7 +217,7 @@ describe("runCli", () => {
   ] as const)("rejects physical LED commands on %s", async (platform, displayName) => {
     const stderr: string[] = [];
 
-    const exitCode = await runCli(["set", "active"], {
+    const exitCode = await runCli(["set", "working"], {
       platform,
       createClient: () => {
         throw new Error("should not connect");
@@ -247,9 +253,9 @@ describe("runCli", () => {
     expect(stdout.join("")).toContain("Usage:");
   });
 
-  it("sends set active as a setState request", async () => {
+  it("sends set working as a setState request", async () => {
     const clientFactory = createClientFactory([{ ok: true }]);
-    const exitCode = await runCli(["set", "active"], {
+    const exitCode = await runCli(["set", "working"], {
       platform: "win32",
       createClient: clientFactory.createClient,
       spawnDaemon: async () => {},
@@ -259,13 +265,13 @@ describe("runCli", () => {
 
     expect(exitCode).toBe(0);
     expect(clientFactory.requests).toEqual([
-      { type: "setState", state: "active", ttlMs: undefined, overrides: undefined },
+      { type: "setState", state: "working", ttlMs: undefined, overrides: undefined },
     ]);
   });
 
   it("treats ttl zero as an infinite request", async () => {
     const clientFactory = createClientFactory([{ ok: true }]);
-    const exitCode = await runCli(["set", "active", "--ttl", "0"], {
+    const exitCode = await runCli(["set", "working", "--ttl", "0"], {
       platform: "win32",
       createClient: clientFactory.createClient,
       spawnDaemon: async () => {},
@@ -277,8 +283,30 @@ describe("runCli", () => {
     expect(clientFactory.requests).toEqual([
       {
         type: "setState",
-        state: "active",
+        state: "working",
         ttlMs: 0,
+        overrides: undefined,
+      },
+    ]);
+  });
+
+  it("sends state kind in set requests", async () => {
+    const clientFactory = createClientFactory([{ ok: true }]);
+    const exitCode = await runCli(["set", "working", "-k", "command"], {
+      platform: "win32",
+      createClient: clientFactory.createClient,
+      spawnDaemon: async () => {},
+      stdout: { write: async () => true },
+      stderr: { write: async () => true },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(clientFactory.requests).toEqual([
+      {
+        type: "setState",
+        state: "working",
+        kind: "command",
+        ttlMs: undefined,
         overrides: undefined,
       },
     ]);
@@ -295,7 +323,7 @@ describe("runCli", () => {
     });
 
     expect(exitCode).toBe(0);
-    expect(clientFactory.requests).toEqual([{ type: "runDemo", overrides: undefined }]);
+    expect(clientFactory.requests).toEqual([{ type: "runDemo", overrides: undefined, ignoreInputSuppression: true }]);
   });
 
   it("runs the built-in preview sequence with show demo", async () => {
@@ -309,7 +337,7 @@ describe("runCli", () => {
     });
 
     expect(exitCode).toBe(0);
-    expect(clientFactory.requests).toEqual([{ type: "runDemo", overrides: { leds: ["caps"] } }]);
+    expect(clientFactory.requests).toEqual([{ type: "runDemo", overrides: { leds: ["caps"] }, ignoreInputSuppression: true }]);
   });
 
   it("accepts short LED aliases for preview overrides", async () => {
@@ -323,7 +351,7 @@ describe("runCli", () => {
     });
 
     expect(exitCode).toBe(0);
-    expect(clientFactory.requests).toEqual([{ type: "runDemo", overrides: { leds: ["caps", "num"] } }]);
+    expect(clientFactory.requests).toEqual([{ type: "runDemo", overrides: { leds: ["caps", "num"] }, ignoreInputSuppression: true }]);
   });
 
   it("previews one state with show", async () => {
@@ -338,13 +366,13 @@ describe("runCli", () => {
 
     expect(exitCode).toBe(0);
     expect(clientFactory.requests).toEqual([
-      { type: "setState", state: "blocked", ttlMs: 2_000, overrides: undefined },
+      { type: "setState", state: "blocked", ttlMs: 5_000, overrides: undefined, ignoreInputSuppression: true },
     ]);
   });
 
   it("previews one state with a runtime LED override", async () => {
     const clientFactory = createClientFactory([{ ok: true }]);
-    const exitCode = await runCli(["show", "active", "--leds", "caps,num"], {
+    const exitCode = await runCli(["show", "working", "--leds", "caps,num"], {
       platform: "win32",
       createClient: clientFactory.createClient,
       spawnDaemon: async () => {},
@@ -354,7 +382,39 @@ describe("runCli", () => {
 
     expect(exitCode).toBe(0);
     expect(clientFactory.requests).toEqual([
-      { type: "setState", state: "active", ttlMs: 2_000, overrides: { leds: ["caps", "num"] } },
+      { type: "setState", state: "working", ttlMs: 5_000, overrides: { leds: ["caps", "num"] }, ignoreInputSuppression: true },
+    ]);
+  });
+
+  it("previews one state kind with show -k", async () => {
+    const clientFactory = createClientFactory([{ ok: true }]);
+    const exitCode = await runCli(["show", "working", "-k", "command"], {
+      platform: "win32",
+      createClient: clientFactory.createClient,
+      spawnDaemon: async () => {},
+      stdout: { write: async () => true },
+      stderr: { write: async () => true },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(clientFactory.requests).toEqual([
+      { type: "setState", state: "working", kind: "command", ttlMs: 5_000, overrides: undefined, ignoreInputSuppression: true },
+    ]);
+  });
+
+  it("previews one state kind with show state.kind", async () => {
+    const clientFactory = createClientFactory([{ ok: true }]);
+    const exitCode = await runCli(["show", "error.critical"], {
+      platform: "win32",
+      createClient: clientFactory.createClient,
+      spawnDaemon: async () => {},
+      stdout: { write: async () => true },
+      stderr: { write: async () => true },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(clientFactory.requests).toEqual([
+      { type: "setState", state: "error", kind: "critical", ttlMs: 5_000, overrides: undefined, ignoreInputSuppression: true },
     ]);
   });
 
@@ -584,8 +644,8 @@ describe("runCli", () => {
             codex: {
               enabled: false,
               hooks: {
-                SessionStart: "active",
-                PermissionRequest: "blocked",
+                SessionStart: { state: "working", kind: "preparing" },
+                PermissionRequest: { state: "blocked", kind: "permission" },
               },
             },
             "claude-code": {
@@ -609,8 +669,8 @@ describe("runCli", () => {
     expect(clientFactory.requests).toEqual([{ type: "getConfig" }]);
     expect(stdout.join("")).toContain('"installed": 2');
     expect(stdout.join("")).toContain('"codex"');
-    expect(fs.readFileSync(hooksPath, "utf8")).toContain("AgentLumos: active");
-    expect(fs.readFileSync(hooksPath, "utf8")).toContain("AgentLumos: blocked");
+    expect(fs.readFileSync(hooksPath, "utf8")).toContain("AgentLumos: working.preparing");
+    expect(fs.readFileSync(hooksPath, "utf8")).toContain("AgentLumos: blocked.permission");
   });
 
   it("uninstalls only AgentLumos hook handlers", async () => {
@@ -672,10 +732,14 @@ describe("runCli", () => {
     }
     const config = getDefaultConfig();
     const codexHooks = Object.fromEntries(
-      Object.entries(config.hookIntegrations.codex.hooks).map(([eventName, state]) => [
-        eventName,
-        [{ hooks: [{ type: "command", command: state === "idle" ? "lumos off" : `lumos set ${state}`, statusMessage: `AgentLumos: ${state}` }] }],
-      ]),
+      Object.entries(config.hookIntegrations.codex.hooks).map(([eventName, signal]) => {
+        const formatted = signal.kind ? `${signal.state}.${signal.kind}` : signal.state;
+        const command = signal.state === "idle" ? "lumos off" : `lumos set ${signal.state}${signal.kind ? ` -k ${signal.kind}` : ""}`;
+        return [
+          eventName,
+          [{ hooks: [{ type: "command", command, statusMessage: `AgentLumos: ${formatted}` }] }],
+        ];
+      }),
     );
     fs.writeFileSync(
       hooksPath,

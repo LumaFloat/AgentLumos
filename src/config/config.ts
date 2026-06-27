@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { parseTtlOrZero } from "../core/duration";
+import { ACTIVE_LUMOS_STATES, STATE_KIND_OPTIONS, parseStateSignal } from "../state";
 import type {
   ActiveLumosState,
   AnimationConfigMap,
@@ -11,13 +12,14 @@ import type {
   HookIntegrationName,
   LedName,
   LedSelector,
+  LumosStateSignal,
   LumosAnimationConfig,
   LumosConfig,
-  LumosState,
   LumosStateConfig,
   SequenceStepConfig,
   StateConfigMap,
   VisualProfileConfig,
+  VisualProfileKey,
   VisualProfileLayout,
   VisualProfileMap,
 } from "../types";
@@ -28,41 +30,105 @@ export interface ResetConfigResult {
   path: string;
 }
 
-const ACTIVE_STATES: ActiveLumosState[] = ["active", "blocked", "success", "error"];
+const ACTIVE_STATES = ACTIVE_LUMOS_STATES;
 const HOOK_INTEGRATIONS: HookIntegrationName[] = ["codex", "claude-code"];
 const ANIMATION_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
+
+const BASE_VISUAL_PROFILES: Record<ActiveLumosState, VisualProfileConfig> = {
+  working: {
+    oneLed: { animation: "heartbeat", speed: "slow" },
+    twoLed: { animation: "chase-pair", speed: "normal" },
+    threeLed: { animation: "chase-rider", speed: "normal" },
+  },
+  blocked: {
+    oneLed: { animation: "double-blink", speed: "normal" },
+    twoLed: { animation: "blocked-pair", speed: "normal" },
+    threeLed: { animation: "prompt-shift", speed: "normal" },
+  },
+  success: {
+    oneLed: { animation: "confirm", speed: "normal" },
+    twoLed: { animation: "confirm-pair", speed: "normal" },
+    threeLed: { animation: "embrace-confirm", speed: "normal" },
+  },
+  error: {
+    oneLed: { animation: "alert-triple", speed: "fast" },
+    twoLed: { animation: "alert-triple", speed: "normal" },
+    threeLed: { animation: "alert-triple", speed: "normal" },
+  },
+};
+
+const VISUAL_PROFILE_KEYS: readonly VisualProfileKey[] = [
+  ...ACTIVE_STATES,
+  ...ACTIVE_STATES.flatMap((state) => STATE_KIND_OPTIONS[state].map((kind) => `${state}.${kind}` as VisualProfileKey)),
+];
+
+function cloneVisualProfileLiteral(profile: VisualProfileConfig): VisualProfileConfig {
+  return {
+    oneLed: { ...profile.oneLed },
+    twoLed: { ...profile.twoLed },
+    threeLed: { ...profile.threeLed },
+  };
+}
+
+function createDefaultVisualProfiles(): VisualProfileMap {
+  return {
+    working: cloneVisualProfileLiteral(BASE_VISUAL_PROFILES.working),
+    "working.preparing": cloneVisualProfileLiteral(BASE_VISUAL_PROFILES.working),
+    "working.thinking": {
+      oneLed: { animation: "heartbeat", speed: "slow" },
+      twoLed: { animation: "chase-pair", speed: "slow" },
+      threeLed: { animation: "chase-rider", speed: "slow" },
+    },
+    "working.responding": cloneVisualProfileLiteral(BASE_VISUAL_PROFILES.working),
+    "working.tool": {
+      oneLed: { animation: "heartbeat", speed: "normal" },
+      twoLed: { animation: "chase-pair", speed: "fast" },
+      threeLed: { animation: "scan-pingpong", speed: "normal" },
+    },
+    "working.command": {
+      oneLed: { animation: "heartbeat", speed: "normal" },
+      twoLed: { animation: "chase-pair", speed: "fast" },
+      threeLed: { animation: "scan-pingpong", speed: "fast" },
+    },
+    blocked: cloneVisualProfileLiteral(BASE_VISUAL_PROFILES.blocked),
+    "blocked.permission": cloneVisualProfileLiteral(BASE_VISUAL_PROFILES.blocked),
+    "blocked.input": {
+      oneLed: { animation: "double-blink", speed: "slow" },
+      twoLed: { animation: "blocked-pair", speed: "slow" },
+      threeLed: { animation: "prompt-shift", speed: "slow" },
+    },
+    success: cloneVisualProfileLiteral(BASE_VISUAL_PROFILES.success),
+    "success.turn": cloneVisualProfileLiteral(BASE_VISUAL_PROFILES.success),
+    "success.task": {
+      oneLed: { animation: "confirm", speed: "slow" },
+      twoLed: { animation: "confirm-pair", speed: "slow" },
+      threeLed: { animation: "embrace-confirm", speed: "slow" },
+    },
+    error: cloneVisualProfileLiteral(BASE_VISUAL_PROFILES.error),
+    "error.tool": cloneVisualProfileLiteral(BASE_VISUAL_PROFILES.error),
+    "error.command": {
+      oneLed: { animation: "alert-triple", speed: "urgent" },
+      twoLed: { animation: "alert-triple", speed: "fast" },
+      threeLed: { animation: "alert-triple", speed: "fast" },
+    },
+    "error.critical": {
+      oneLed: { animation: "alert-triple", speed: "urgent" },
+      twoLed: { animation: "alert-triple", speed: "urgent" },
+      threeLed: { animation: "alert-triple", speed: "urgent" },
+    },
+  };
+}
 
 const DEFAULT_CONFIG: LumosConfig = {
   leds: ["num", "caps", "scroll"],
   defaultTtl: "30m",
   states: {
-    active: { ttl: "10m" },
+    working: { ttl: "10m" },
     blocked: { ttl: "60s" },
     success: { ttl: "10s" },
     error: { ttl: "20s" },
   },
-  visualProfiles: {
-    active: {
-      oneLed: { animation: "heartbeat", speed: "slow" },
-      twoLed: { animation: "chase-pair", speed: "normal" },
-      threeLed: { animation: "chase-rider", speed: "normal" },
-    },
-    blocked: {
-      oneLed: { animation: "double-blink", speed: "normal" },
-      twoLed: { animation: "double-blink", speed: "normal" },
-      threeLed: { animation: "prompt-shift", speed: "normal" },
-    },
-    success: {
-      oneLed: { animation: "confirm", speed: "normal" },
-      twoLed: { animation: "confirm", speed: "normal" },
-      threeLed: { animation: "embrace-confirm", speed: "normal" },
-    },
-    error: {
-      oneLed: { animation: "alert-triple", speed: "fast" },
-      twoLed: { animation: "alert-triple", speed: "normal" },
-      threeLed: { animation: "alert-triple", speed: "normal" },
-    },
-  },
+  visualProfiles: createDefaultVisualProfiles(),
   animations: {
     heartbeat: {
       type: "sequence",
@@ -84,6 +150,23 @@ const DEFAULT_CONFIG: LumosConfig = {
       steps: [
         { leds: ["first"], onMs: 180, offMs: 240 },
         { leds: ["last"], onMs: 180, offMs: 1200 },
+      ],
+    },
+    "blocked-pair": {
+      type: "sequence",
+      steps: [
+        { leds: ["first"], onMs: 160, offMs: 120 },
+        { leds: ["last"], onMs: 160, offMs: 120 },
+        { leds: ["first"], onMs: 160, offMs: 120 },
+        { leds: ["last"], onMs: 160, offMs: 900 },
+      ],
+    },
+    "confirm-pair": {
+      type: "sequence",
+      steps: [
+        { leds: ["first"], onMs: 160, offMs: 100 },
+        { leds: ["last"], onMs: 160, offMs: 120 },
+        { leds: ["all"], onMs: 520, offMs: 1500 },
       ],
     },
     "chase-rider": {
@@ -132,26 +215,26 @@ const DEFAULT_CONFIG: LumosConfig = {
     codex: {
       enabled: false,
       hooks: {
-        SessionStart: "active",
-        UserPromptSubmit: "active",
-        PreToolUse: "active",
-        PostToolUse: "active",
-        PermissionRequest: "blocked",
-        Stop: "success",
+        SessionStart: { state: "working", kind: "preparing" },
+        UserPromptSubmit: { state: "working", kind: "preparing" },
+        PreToolUse: { state: "working", kind: "tool" },
+        PostToolUse: { state: "working" },
+        PermissionRequest: { state: "blocked", kind: "permission" },
+        Stop: { state: "success", kind: "turn" },
       },
     },
     "claude-code": {
       enabled: false,
       hooks: {
-        SessionStart: "active",
-        UserPromptSubmit: "active",
-        PreToolUse: "active",
-        PostToolUseFailure: "error",
-        PermissionRequest: "blocked",
-        Notification: "blocked",
-        Stop: "success",
-        StopFailure: "error",
-        SessionEnd: "idle",
+        SessionStart: { state: "working", kind: "preparing" },
+        UserPromptSubmit: { state: "working", kind: "preparing" },
+        PreToolUse: { state: "working", kind: "tool" },
+        PostToolUseFailure: { state: "error", kind: "tool" },
+        PermissionRequest: { state: "blocked", kind: "permission" },
+        Notification: { state: "blocked", kind: "input" },
+        Stop: { state: "success", kind: "turn" },
+        StopFailure: { state: "error", kind: "critical" },
+        SessionEnd: { state: "idle" },
       },
     },
   },
@@ -328,40 +411,40 @@ function normalizeVisualProfiles(value: unknown, animations: AnimationConfigMap)
   }
 
   const profiles = value as Record<string, unknown>;
-  return ACTIVE_STATES.reduce<VisualProfileMap>((normalized, state) => {
-    normalized[state] = normalizeVisualProfile(state, profiles[state], animations);
+  return VISUAL_PROFILE_KEYS.reduce<VisualProfileMap>((normalized, profileKey) => {
+    normalized[profileKey] = normalizeVisualProfile(profileKey, profiles[profileKey], animations);
     return normalized;
   }, {} as VisualProfileMap);
 }
 
 function normalizeVisualProfile(
-  state: ActiveLumosState,
+  profileKey: VisualProfileKey,
   value: unknown,
   animations: AnimationConfigMap,
 ): VisualProfileConfig {
   if (value === undefined) {
-    return cloneVisualProfile(DEFAULT_CONFIG.visualProfiles[state]);
+    throw new Error(`Missing visual profile: ${profileKey}.`);
   }
 
   if (!isPlainObject(value)) {
-    throw new Error(`Visual profile for ${state} must be a JSON object.`);
+    throw new Error(`Visual profile for ${profileKey} must be a JSON object.`);
   }
 
   const profile = value as Record<string, unknown>;
   return {
-    oneLed: normalizeVisualProfileLayout(state, "oneLed", profile.oneLed, animations),
-    twoLed: normalizeVisualProfileLayout(state, "twoLed", profile.twoLed, animations),
-    threeLed: normalizeVisualProfileLayout(state, "threeLed", profile.threeLed, animations),
+    oneLed: normalizeVisualProfileLayout(profileKey, "oneLed", profile.oneLed, animations),
+    twoLed: normalizeVisualProfileLayout(profileKey, "twoLed", profile.twoLed, animations),
+    threeLed: normalizeVisualProfileLayout(profileKey, "threeLed", profile.threeLed, animations),
   };
 }
 
 function normalizeVisualProfileLayout(
-  state: ActiveLumosState,
+  profileKey: VisualProfileKey,
   layoutName: keyof VisualProfileConfig,
   value: unknown,
   animations: AnimationConfigMap,
 ): VisualProfileLayout {
-  const label = `visualProfiles.${state}.${layoutName}`;
+  const label = `visualProfiles.${profileKey}.${layoutName}`;
   if (!isPlainObject(value)) {
     throw new Error(`${label} must be a JSON object.`);
   }
@@ -448,18 +531,18 @@ function normalizeHookIntegration(name: HookIntegrationName, value: unknown): Ho
   };
 }
 
-function normalizeHookMap(value: unknown, label: string): Record<string, LumosState> {
+function normalizeHookMap(value: unknown, label: string): Record<string, LumosStateSignal> {
   if (!isPlainObject(value)) {
     throw new Error(`${label} must be a JSON object.`);
   }
 
   const hooks = value as Record<string, unknown>;
-  return Object.entries(hooks).reduce<Record<string, LumosState>>((normalized, [eventName, state]) => {
+  return Object.entries(hooks).reduce<Record<string, LumosStateSignal>>((normalized, [eventName, state]) => {
     if (!eventName) {
       throw new Error(`${label} contains an empty hook event name.`);
     }
 
-    normalized[eventName] = normalizeLumosState(state, `${label}.${eventName}`);
+    normalized[eventName] = parseStateSignal(state, `${label}.${eventName}`);
     return normalized;
   }, {});
 }
@@ -543,14 +626,6 @@ function normalizeBoolean(value: unknown, label: string): boolean {
   return value;
 }
 
-function normalizeLumosState(value: unknown, label: string): LumosState {
-  if (value === "idle" || value === "active" || value === "blocked" || value === "success" || value === "error") {
-    return value;
-  }
-
-  throw new Error(`${label} must be a valid Lumos state.`);
-}
-
 function normalizePositiveInteger(value: unknown, label: string): number {
   if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
     throw new Error(`${label} must be a positive integer.`);
@@ -589,8 +664,8 @@ function mergeAnimations(existing: AnimationConfigMap, patch: Partial<AnimationC
 }
 
 function mergeVisualProfiles(existing: VisualProfileMap, patch: Partial<VisualProfileMap>): VisualProfileMap {
-  return ACTIVE_STATES.reduce<VisualProfileMap>((profiles, state) => {
-    profiles[state] = patch[state] ?? existing[state];
+  return VISUAL_PROFILE_KEYS.reduce<VisualProfileMap>((profiles, profileKey) => {
+    profiles[profileKey] = patch[profileKey] ?? existing[profileKey];
     return profiles;
   }, {} as VisualProfileMap);
 }
@@ -640,8 +715,8 @@ function cloneDocument(config: LumosConfig): ConfigDocument {
 }
 
 function cloneVisualProfiles(profiles: VisualProfileMap): VisualProfileMap {
-  return ACTIVE_STATES.reduce<VisualProfileMap>((cloned, state) => {
-    cloned[state] = cloneVisualProfile(profiles[state]);
+  return VISUAL_PROFILE_KEYS.reduce<VisualProfileMap>((cloned, profileKey) => {
+    cloned[profileKey] = cloneVisualProfile(profiles[profileKey]);
     return cloned;
   }, {} as VisualProfileMap);
 }
@@ -693,7 +768,9 @@ function cloneHookIntegrations(integrations: HookIntegrationConfigMap): HookInte
 function cloneHookIntegration(integration: HookIntegrationConfig): HookIntegrationConfig {
   return {
     enabled: integration.enabled,
-    hooks: { ...integration.hooks },
+    hooks: Object.fromEntries(
+      Object.entries(integration.hooks).map(([eventName, signal]) => [eventName, { ...signal }]),
+    ),
   };
 }
 

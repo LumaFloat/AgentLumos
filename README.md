@@ -1,4 +1,4 @@
-# AgentLumos
+﻿# AgentLumos
 
 English | [简体中文](README.zh-CN.md)
 
@@ -14,7 +14,7 @@ AgentLumos shows the runtime state of AI coding agents. The initial feature set 
 It does not wrap your agent, replace your terminal, or add another screen overlay. It listens to native hook events and plays short LED animations so you can tell, from your peripheral vision, whether the agent is working, blocked, done, or failed.
 
 ```text
-active   [●○○] [○●○] [○○●]   agent is working
+working   [●○○] [○●○] [○○●]   agent is working
 blocked  [●●○] [○●●] [●○●]   waiting for input or permission
 success  [○●○] [●●●] [○●○]   task completed
 error    [●●●] [○○○] [●●●]   task failed
@@ -30,8 +30,8 @@ error    [●●●] [○○○] [●●●]   task failed
 - **Hook driven**: maps Codex and Claude Code hook events to LED states.
 - **No extra hardware for the initial setup**: uses the Lock indicator LEDs already on many keyboards.
 - **Restores state**: captures the original Lock state and restores it after animations.
-- **Quiet while interacting**: temporarily suppresses LED animations while you type or click/drag the mouse, restores the original Lock state, and resumes after a short idle window if the agent state is still active.
-- **State leases**: `active` now defaults to a 10 minute lease and renews on new hooks; `blocked`, `success`, and `error` default to 60 seconds, 10 seconds, and 20 seconds so stale states do not linger.
+- **Quiet while interacting**: temporarily suppresses LED animations while you type or click/drag the mouse, restores the original Lock state, and resumes after a short idle window if the agent state is still working.
+- **State leases**: `working` now defaults to a 10 minute lease and renews on new hooks; `blocked`, `success`, and `error` default to 60 seconds, 10 seconds, and 20 seconds so stale states do not linger.
 - **Configurable**: choose LED order, state TTLs, visual profiles, animations, and hook mappings.
 - **Windows native**: uses the current Windows keyboard Lock behavior.
 
@@ -67,6 +67,10 @@ lumos show
 lumos show demo
 lumos show demo --leds c
 
+# Preview a specific state kind.
+lumos show working.command
+lumos show error -k critical
+
 # Set the physical LED order from left to right.
 lumos config set leds n,c,s
 
@@ -80,7 +84,7 @@ lumos hook check
 
 ## Basic Usage
 
-Usually you only need to configure the visible Lock LEDs on your keyboard, then install the hook for the agent you use. After that, Codex or Claude Code hooks trigger `active`, `blocked`, `success`, and `error` automatically. You should not need to run state commands manually during normal use.
+Usually you only need to configure the visible Lock LEDs on your keyboard, then install the hook for the agent you use. After that, Codex or Claude Code hooks trigger `working`, `blocked`, `success`, and `error` automatically. You should not need to run state commands manually during normal use.
 
 State commands use the configured LED order. Use `lumos show --leds ...` for temporary layout previews without changing saved config.
 
@@ -103,7 +107,7 @@ lumos config set leds n,c,s
 
 LED CLI values accept full names (`caps`, `num`, `scroll`) or short aliases (`c`, `n`, `s`). Saved config is normalized to full names.
 
-AgentLumos uses visual profiles to choose an animation and speed for one-, two-, and three-LED layouts. Three-LED layouts keep the full default animations. Two-LED layouts use left/right movement and together-pulse patterns. One-LED layouts use distinct rhythms so `active`, `blocked`, `success`, and `error` remain recognizable.
+AgentLumos uses visual profiles to choose an animation and speed for one-, two-, and three-LED layouts. Profiles are explicit for both baseline states such as `working` and built-in state kinds such as `working.command` or `error.critical`. Three-LED layouts keep the full default animations. Two-LED layouts use left/right movement and together-pulse patterns. One-LED layouts use distinct rhythms so `working`, `blocked`, `success`, and `error` remain recognizable.
 
 Animations are executed as selected by the visual profile. The renderer maps LED selectors to the configured LEDs, scales timing by the selected speed, and skips redundant consecutive physical writes.
 
@@ -163,7 +167,7 @@ These commands are mainly for checking effects or diagnosing problems. They are 
 lumos show
 
 # Manually show short states to check animation behavior.
-lumos show active
+lumos show working
 lumos show blocked
 lumos show success
 lumos show error
@@ -201,15 +205,15 @@ Important fields:
 | --- | --- |
 | `leds` | Physical Lock LED order from left to right. |
 | `states` | TTL for each state. |
-| `visualProfiles` | Animation and speed for each state and LED layout. |
+| `visualProfiles` | Animation and speed for each state or state kind and LED layout. |
 | `animations` | Reusable LED animation definitions. |
 | `hookIntegrations` | Agent hook event to AgentLumos state mappings. |
 
-In `lumos status`, `effectSuppressed` means the logical state is still active, but LED animation is temporarily quiet because keyboard or mouse-button activity was detected. `pendingReminder` means the latest finite `blocked`, `success`, or `error` state expired while quiet and is waiting to replay once input becomes idle. Mouse movement and wheel scrolling are not used for suppression.
+In `lumos status`, `effectSuppressed` means the logical state is still working, but LED animation is temporarily quiet because keyboard or mouse-button activity was detected. `pendingReminder` means the latest finite `blocked`, `success`, or `error` state expired while quiet and is waiting to replay once input becomes idle. Mouse movement and wheel scrolling are not used for suppression.
 
 Lease behavior:
 
-- `active` renews on every matching hook and never replays after expiry.
+- `working` renews on every matching hook and never replays after expiry.
 - `blocked`, `success`, and `error` keep their latest lease while quiet, and the newest expired one may replay once after input becomes idle.
 - Deferred replay lasts at least 5s for `blocked`, 3s for `success`, and 5s for `error`.
 - Deferred reminders older than 5 minutes are discarded.

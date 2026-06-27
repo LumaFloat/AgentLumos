@@ -1,31 +1,31 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 import type { DaemonRequest, LumosConfig } from "../src/types";
 
 describe("shared types", () => {
-  it("allows the default V0.4 config shape", () => {
+  it("allows the default V0.5 config shape", () => {
     const config: LumosConfig = {
       leds: ["num", "caps", "scroll"],
       defaultTtl: "30m",
       states: {
-        active: { ttl: "10m" },
+        working: { ttl: "10m" },
         blocked: { ttl: "60s" },
         success: { ttl: "10s" },
         error: { ttl: "20s" },
       },
       visualProfiles: {
-        active: {
+        working: {
           oneLed: { animation: "heartbeat", speed: "slow" },
           twoLed: { animation: "chase-pair", speed: "normal" },
           threeLed: { animation: "chase-rider", speed: "normal" },
         },
         blocked: {
           oneLed: { animation: "double-blink", speed: "normal" },
-          twoLed: { animation: "double-blink", speed: "normal" },
+          twoLed: { animation: "blocked-pair", speed: "normal" },
           threeLed: { animation: "prompt-shift", speed: "normal" },
         },
         success: {
           oneLed: { animation: "confirm", speed: "normal" },
-          twoLed: { animation: "confirm", speed: "normal" },
+          twoLed: { animation: "confirm-pair", speed: "normal" },
           threeLed: { animation: "embrace-confirm", speed: "normal" },
         },
         error: {
@@ -50,6 +50,14 @@ describe("shared types", () => {
         "chase-pair": {
           type: "sequence",
           steps: [{ leds: ["first"], onMs: 180, offMs: 240 }],
+        },
+        "blocked-pair": {
+          type: "sequence",
+          steps: [{ leds: ["first"], onMs: 160, offMs: 120 }],
+        },
+        "confirm-pair": {
+          type: "sequence",
+          steps: [{ leds: ["first"], onMs: 160, offMs: 100 }],
         },
         "chase-rider": {
           type: "sequence",
@@ -76,13 +84,13 @@ describe("shared types", () => {
         codex: {
           enabled: false,
           hooks: {
-            SessionStart: "active",
+            SessionStart: { state: "working" },
           },
         },
         "claude-code": {
           enabled: false,
           hooks: {
-            SessionEnd: "idle",
+            SessionEnd: { state: "idle" },
           },
         },
       },
@@ -94,7 +102,7 @@ describe("shared types", () => {
   it("allows setState daemon requests", () => {
     const request: DaemonRequest = {
       type: "setState",
-      state: "active",
+      state: "working",
       ttlMs: 30 * 60 * 1000,
       overrides: {
         leds: ["caps", "num"],

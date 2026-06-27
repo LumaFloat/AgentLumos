@@ -6,6 +6,7 @@ import { Command, CommanderError } from "commander";
 import { parseTtlOrZero } from "../core/duration";
 import { createNamedPipeClient } from "../daemon/named-pipe-client";
 import { getDaemonPipePath } from "../daemon/pipe-path";
+import { ACTIVE_LUMOS_STATES, assertValidStateKind, formatStateSignal, isActiveLumosState, parseStateSignal } from "../state";
 import type {
   DaemonRequest,
   DaemonResponse,
@@ -14,14 +15,16 @@ import type {
   LedName,
   LumosConfig,
   LumosState,
+  LumosStateKind,
   LumosStateOverride,
+  LumosStateSignal,
 } from "../types";
 import { formatJson, formatWarning } from "./format";
 
 const DAEMON_START_RETRY_COUNT = 20;
 const DAEMON_START_RETRY_DELAY_MS = 100;
-const SHOW_STATE_TTL_MS = 2_000;
-const ACTIVE_STATES = ["active", "blocked", "success", "error"] as const;
+const SHOW_STATE_TTL_MS = 5_000;
+const ACTIVE_STATES = ACTIVE_LUMOS_STATES;
 
 export const CLI_EXIT = {
   SUCCESS: 0,
@@ -68,10 +71,20 @@ type CliOperation =
 
 interface StateCommandOptions {
   ttl?: string;
+  kind?: string;
 }
 
 interface LedOverrideOptions {
   leds?: string;
+}
+
+interface ShowOptions extends LedOverrideOptions {
+  kind?: string;
+}
+
+interface ActiveStateSignal {
+  state: Exclude<LumosState, "idle">;
+  kind?: LumosStateKind;
 }
 
 interface HookCheckOptions {
@@ -91,11 +104,11 @@ interface HookTargetCheck {
   hookInstalled: boolean;
   hookCheckSkipped: boolean;
   skipReason?: string;
-  expectedEvents: Record<string, LumosState>;
-  installedEvents: Record<string, LumosState[]>;
+  expectedEvents: Record<string, string>;
+  installedEvents: Record<string, string[]>;
   missingEvents: string[];
   extraEvents: string[];
-  mismatchedEvents: Array<{ event: string; expected: LumosState; actual: LumosState[] }>;
+  mismatchedEvents: Array<{ event: string; expected: string; actual: string[] }>;
   managedHandlers: number;
   error?: string;
 }
@@ -167,19 +180,28 @@ function buildRuntimeOverrides(options: LedOverrideOptions): LumosStateOverride 
 }
 
 function buildStateRequest(state: Exclude<LumosState, "idle">, options: StateCommandOptions): DaemonRequest {
+  try {
+    assertValidStateKind(state, options.kind);
+  } catch (error) {
+    throw new CliUsageError(toErrorMessage(error));
+  }
+
   return {
     type: "setState",
     state,
+    kind: options.kind as LumosStateKind | undefined,
     ttlMs: options.ttl ? parseTtlOrZero(options.ttl) : undefined,
   };
 }
 
-function buildShowStateRequest(state: Exclude<LumosState, "idle">, options: LedOverrideOptions): DaemonRequest {
+function buildShowStateRequest(signal: ActiveStateSignal, options: LedOverrideOptions): DaemonRequest {
   return {
     type: "setState",
-    state,
+    state: signal.state,
+    kind: signal.kind,
     ttlMs: SHOW_STATE_TTL_MS,
     overrides: buildRuntimeOverrides(options),
+    ignoreInputSuppression: true,
   };
 }
 
@@ -187,6 +209,7 @@ function buildShowDemoRequest(options: LedOverrideOptions): DaemonRequest {
   return {
     type: "runDemo",
     overrides: buildRuntimeOverrides(options),
+    ignoreInputSuppression: true,
   };
 }
 
@@ -263,19 +286,38 @@ function parseHookIntegrationName(value: string): HookIntegrationName {
 }
 
 function parseActiveState(value: string): Exclude<LumosState, "idle"> {
-  if ((ACTIVE_STATES as readonly string[]).includes(value)) {
-    return value as Exclude<LumosState, "idle">;
+  if (isActiveLumosState(value)) {
+    return value;
   }
 
   throw new CliUsageError(`Invalid state: ${value}`);
 }
 
-function parseShowState(value: string | undefined): Exclude<LumosState, "idle"> | null {
+function parseShowState(value: string | undefined, options: ShowOptions): ActiveStateSignal | null {
   if (!value || value === "demo") {
+    if (options.kind !== undefined) {
+      throw new CliUsageError("Demo preview does not support kind.");
+    }
     return null;
   }
 
-  return parseActiveState(value);
+  const signal = parseStateSignal(value, "show state");
+  if (signal.state === "idle") {
+    throw new CliUsageError("Invalid state: idle");
+  }
+
+  if (signal.kind !== undefined && options.kind !== undefined) {
+    throw new CliUsageError("Duplicate kind.");
+  }
+
+  const kind = signal.kind ?? options.kind;
+  try {
+    assertValidStateKind(signal.state, kind);
+  } catch (error) {
+    throw new CliUsageError(toErrorMessage(error));
+  }
+
+  return kind === undefined ? { state: signal.state } : { state: signal.state, kind };
 }
 
 function setDaemonRequest(
@@ -322,8 +364,9 @@ function createProgram(setOperation: (operation: CliOperation) => void, deps: Cl
     .description("Preview LED effects.")
     .allowExcessArguments(false)
     .option("--leds <list>", "runtime LED list")
-    .action((state: string | undefined, options: LedOverrideOptions) => {
-      const parsedState = parseShowState(state);
+    .option("-k, --kind <kind>", "state kind")
+    .action((state: string | undefined, options: ShowOptions) => {
+      const parsedState = parseShowState(state, options);
       if (parsedState) {
         setDaemonRequest(setOperation, buildShowStateRequest(parsedState, options), { retryOnConnectFailure: true });
         return;
@@ -337,6 +380,7 @@ function createProgram(setOperation: (operation: CliOperation) => void, deps: Cl
     .description("Set agent state for hooks or scripts.")
     .allowExcessArguments(false)
     .option("--ttl <duration>", "state TTL")
+    .option("-k, --kind <kind>", "state kind")
     .action((state: string, options: StateCommandOptions) => {
       setDaemonRequest(setOperation, buildStateRequest(parseActiveState(state), options), { retryOnConnectFailure: true });
     });
@@ -478,11 +522,11 @@ async function parseOperation(argv: string[], deps: CliDeps): Promise<CliOperati
 
 function buildNativeHookSnippet(target: HookIntegrationName, integration: HookIntegrationConfig): { hooks: NativeHookConfig } {
   const hooks = Object.entries(integration.hooks).reduce<Record<string, Array<{ hooks: Array<Record<string, unknown>> }>>>(
-    (snippet, [eventName, state]) => {
+    (snippet, [eventName, signal]) => {
       snippet[eventName] = [
         {
           hooks: [
-            buildAgentLumosHookHandler(state),
+            buildAgentLumosHookHandler(signal),
           ],
         },
       ];
@@ -499,13 +543,14 @@ type NativeHookGroup = { matcher?: string; hooks?: NativeHookHandler[] } & Recor
 type NativeHookConfig = Record<string, NativeHookGroup[]>;
 type NativeHookDocument = { hooks?: NativeHookConfig } & Record<string, unknown>;
 
-function buildAgentLumosHookHandler(state: LumosState): NativeHookHandler {
+function buildAgentLumosHookHandler(signal: LumosStateSignal): NativeHookHandler {
+  const formatted = formatStateSignal(signal);
   return {
     type: "command",
-    command: lumosCommandForState(state),
-    commandWindows: lumosCommandForState(state),
+    command: lumosCommandForState(signal),
+    commandWindows: lumosCommandForState(signal),
     timeout: 10,
-    statusMessage: `AgentLumos: ${state}`,
+    statusMessage: `AgentLumos: ${formatted}`,
   };
 }
 
@@ -622,34 +667,34 @@ function uninstallAgentLumosHooks(target: HookIntegrationName): unknown {
   };
 }
 
-function getAgentLumosHookState(handler: NativeHookHandler): LumosState | null {
+function getAgentLumosHookSignal(handler: NativeHookHandler): string | null {
   if (!isAgentLumosHookHandler(handler)) {
     return null;
   }
 
-  const state = (handler.statusMessage as string).slice("AgentLumos:".length).trim();
-  if (state === "idle" || state === "active" || state === "blocked" || state === "success" || state === "error") {
-    return state;
+  const rawSignal = (handler.statusMessage as string).slice("AgentLumos:".length).trim();
+  try {
+    return formatStateSignal(parseStateSignal(rawSignal, "AgentLumos hook status"));
+  } catch {
+    return null;
   }
-
-  return null;
 }
 
 function getInstalledAgentLumosEvents(document: NativeHookDocument): {
   managedHandlers: number;
-  installedEvents: Record<string, LumosState[]>;
+  installedEvents: Record<string, string[]>;
 } {
   let count = 0;
-  const installedEvents: Record<string, LumosState[]> = {};
+  const installedEvents: Record<string, string[]> = {};
 
   for (const [eventName, groups] of Object.entries(document.hooks ?? {})) {
     for (const group of groups) {
       const handlers = Array.isArray(group.hooks) ? group.hooks : [];
       for (const handler of handlers) {
-        const state = getAgentLumosHookState(handler);
-        if (state) {
+        const signal = getAgentLumosHookSignal(handler);
+        if (signal) {
           count += 1;
-          installedEvents[eventName] = [...(installedEvents[eventName] ?? []), state];
+          installedEvents[eventName] = [...(installedEvents[eventName] ?? []), signal];
         }
       }
     }
@@ -658,8 +703,12 @@ function getInstalledAgentLumosEvents(document: NativeHookDocument): {
   return { managedHandlers: count, installedEvents };
 }
 
-function lumosCommandForState(state: LumosState): string {
-  return state === "idle" ? "lumos off" : `lumos set ${state}`;
+function lumosCommandForState(signal: LumosStateSignal): string {
+  if (signal.state === "idle") {
+    return "lumos off";
+  }
+
+  return signal.kind ? `lumos set ${signal.state} -k ${signal.kind}` : `lumos set ${signal.state}`;
 }
 
 function commandExists(command: string): boolean {
@@ -704,7 +753,12 @@ function getTargetCommand(target: HookIntegrationName): string {
 
 function getHookTargetCheck(target: HookIntegrationName, config: LumosConfig | null): HookTargetCheck {
   const toolInstalled = commandExists(getTargetCommand(target));
-  const expectedEvents = config?.hookIntegrations[target].hooks ?? {};
+  const expectedEvents = Object.fromEntries(
+    Object.entries(config?.hookIntegrations[target].hooks ?? {}).map(([eventName, signal]) => [
+      eventName,
+      formatStateSignal(signal),
+    ]),
+  );
 
   if (!toolInstalled) {
     return {
@@ -761,12 +815,12 @@ function getHookTargetCheck(target: HookIntegrationName, config: LumosConfig | n
   try {
     const { managedHandlers, installedEvents } = getInstalledAgentLumosEvents(readJsonDocument(filePath));
     const missingEvents = Object.entries(expectedEvents)
-      .filter(([event, state]) => !(installedEvents[event] ?? []).includes(state))
+      .filter(([event, signal]) => !(installedEvents[event] ?? []).includes(signal))
       .map(([event]) => event);
     const extraEvents = Object.keys(installedEvents).filter((event) => !(event in expectedEvents));
     const mismatchedEvents = Object.entries(expectedEvents)
-      .filter(([event, state]) => installedEvents[event] && !installedEvents[event].includes(state))
-      .map(([event, state]) => ({ event, expected: state, actual: installedEvents[event] }));
+      .filter(([event, signal]) => installedEvents[event] && !installedEvents[event].includes(signal))
+      .map(([event, signal]) => ({ event, expected: signal, actual: installedEvents[event] }));
 
     return {
       toolInstalled,
@@ -873,7 +927,7 @@ function getTargetTitle(target: HookIntegrationName): string {
   return target === "codex" ? "Codex" : "Claude Code";
 }
 
-function formatTargetEvents(events: Record<string, LumosState[]>): string {
+function formatTargetEvents(events: Record<string, string[]>): string {
   return Object.keys(events).join(", ");
 }
 

@@ -4,6 +4,7 @@ export function createIdleStatus(driverName: string, configuredLeds: readonly Le
   return {
     daemon: "running",
     state: "idle",
+    kind: null,
     configuredLeds: [...configuredLeds],
     activeAnimation: null,
     ttlRemainingMs: null,

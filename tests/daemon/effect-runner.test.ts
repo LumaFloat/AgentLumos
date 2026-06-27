@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 import { createFakeKeyboardDriver } from "../../src/drivers/keyboard/fake";
 import { runEffectCycle, runEffectLoop } from "../../src/daemon/effect-runner";
 import type { LockState, LumosAnimationConfig } from "../../src/types";
@@ -83,7 +83,7 @@ describe("runEffectLoop", () => {
 
     await runEffectLoop({
       driver,
-      state: "active",
+      state: "working",
       animationName: "custom-cycle",
       animation,
       configuredLeds: ["caps", "num"],
@@ -101,7 +101,7 @@ describe("runEffectLoop", () => {
 
     await runEffectLoop({
       driver,
-      state: "active",
+      state: "working",
       animationName: "custom-cycle",
       animation,
       configuredLeds: [],
@@ -125,7 +125,7 @@ describe("runEffectLoop", () => {
 
     await runEffectLoop({
       driver,
-      state: "active",
+      state: "working",
       animationName: "custom-cycle",
       animation,
       configuredLeds: ["caps", "num"],

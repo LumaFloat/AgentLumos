@@ -1,17 +1,17 @@
-# Claude Code hooks
+﻿# Claude Code hooks
 
 AgentLumos 使用 Claude Code 的原生 hooks 驱动 LED 状态，不替换 Claude Code 本身。
 
 ## 默认映射
 
-- `SessionStart` -> `lumos set active`
-- `UserPromptSubmit` -> `lumos set active`
-- `PreToolUse` -> `lumos set active`
-- `PostToolUseFailure` -> `lumos set error`
-- `PermissionRequest` -> `lumos set blocked`
-- `Notification` -> `lumos set blocked`
-- `Stop` -> `lumos set success`
-- `StopFailure` -> `lumos set error`
+- `SessionStart` -> `lumos set working -k preparing`
+- `UserPromptSubmit` -> `lumos set working -k preparing`
+- `PreToolUse` -> `lumos set working -k tool`
+- `PostToolUseFailure` -> `lumos set error -k tool`
+- `PermissionRequest` -> `lumos set blocked -k permission`
+- `Notification` -> `lumos set blocked -k input`
+- `Stop` -> `lumos set success -k turn`
+- `StopFailure` -> `lumos set error -k critical`
 - `SessionEnd` -> `lumos off`
 
 ## 安装

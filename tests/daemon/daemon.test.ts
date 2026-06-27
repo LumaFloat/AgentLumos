@@ -118,9 +118,9 @@ describe("createLumosDaemon", () => {
       clock,
     });
 
-    await daemon.setState("active", "chase-rider", animation, "normal", ["caps"], 5_000);
+    await daemon.setState("working", "chase-rider", animation, "normal", ["caps"], 5_000);
     expect(daemon.getStatus()).toMatchObject({
-      state: "active",
+      state: "working",
       configuredLeds: ["caps"],
       originalLockStateCaptured: true,
       activeAnimation: "chase-rider",
@@ -148,7 +148,7 @@ describe("createLumosDaemon", () => {
       clock,
     });
 
-    await daemon.setState("active", "chase-rider", animation, "normal", ["caps"], 5_000);
+    await daemon.setState("working", "chase-rider", animation, "normal", ["caps"], 5_000);
     await daemon.setState("idle");
     await daemon.waitForIdle();
 
@@ -171,10 +171,10 @@ describe("createLumosDaemon", () => {
       clock,
     });
 
-    await daemon.setState("active", "chase-rider", animation, "normal", ["caps"]);
+    await daemon.setState("working", "chase-rider", animation, "normal", ["caps"]);
 
     expect(daemon.getStatus()).toMatchObject({
-      state: "active",
+      state: "working",
       ttlRemainingMs: 1_234,
       pendingReminder: false,
     });
@@ -189,16 +189,16 @@ describe("createLumosDaemon", () => {
       clock,
     });
 
-    await daemon.setState("active", "chase-rider", animation, "normal", ["caps"], 1_000);
+    await daemon.setState("working", "chase-rider", animation, "normal", ["caps"], 1_000);
     await clock.advance(250);
 
     expect(daemon.getStatus()).toMatchObject({
-      state: "active",
+      state: "working",
       ttlRemainingMs: 750,
     });
   });
 
-  it("renews the active lease when a later active hook arrives", async () => {
+  it("renews the working lease when a later working hook arrives", async () => {
     const clock = createControlledClock();
     const driver = createFakeKeyboardDriver(original);
     const daemon = createLumosDaemon({
@@ -207,18 +207,18 @@ describe("createLumosDaemon", () => {
       clock,
     });
 
-    await daemon.setState("active", "chase-rider", animation, "normal", ["caps"], 1_000);
+    await daemon.setState("working", "chase-rider", animation, "normal", ["caps"], 1_000);
     await clock.advance(900);
-    await daemon.setState("active", "chase-rider", animation, "normal", ["caps"], 1_000);
+    await daemon.setState("working", "chase-rider", animation, "normal", ["caps"], 1_000);
 
     expect(daemon.getStatus()).toMatchObject({
-      state: "active",
+      state: "working",
       ttlRemainingMs: 1_000,
       pendingReminder: false,
     });
   });
 
-  it("keeps success active for its configured ttl", async () => {
+  it("keeps success working for its configured ttl", async () => {
     const clock = createControlledClock();
     const driver = createFakeKeyboardDriver(original);
     const daemon = createLumosDaemon({
@@ -253,7 +253,7 @@ describe("createLumosDaemon", () => {
       clock,
     });
 
-    await daemon.setState("active", "chase-rider", animation, "normal", ["caps"], 5_000);
+    await daemon.setState("working", "chase-rider", animation, "normal", ["caps"], 5_000);
     await clock.advance(100);
     await daemon.waitForIdle();
 
@@ -273,10 +273,10 @@ describe("createLumosDaemon", () => {
       clock,
     });
 
-    await daemon.setState("active", "chase-rider", animation, "normal", [], 5_000);
+    await daemon.setState("working", "chase-rider", animation, "normal", [], 5_000);
 
     expect(daemon.getStatus()).toMatchObject({
-      state: "active",
+      state: "working",
       activeAnimation: null,
       originalLockStateCaptured: false,
       ttlRemainingMs: 5_000,
@@ -337,17 +337,40 @@ describe("createLumosDaemon", () => {
       inputActivityMonitor: inputActivity.monitor,
     });
 
-    await daemon.setState("active", "chase-rider", animation, "normal", ["caps"], 5_000);
+    await daemon.setState("working", "chase-rider", animation, "normal", ["caps"], 5_000);
     await inputActivity.triggerActivity();
 
     expect(daemon.getStatus()).toMatchObject({
-      state: "active",
+      state: "working",
       activeAnimation: "chase-rider",
       effectSuppressed: true,
       originalLockStateCaptured: true,
       pendingReminder: false,
     });
     expect(await driver.readState()).toEqual(original);
+  });
+
+  it("keeps explicit previews visible while keyboard activity is present", async () => {
+    const clock = createControlledClock();
+    const driver = createFakeKeyboardDriver(original);
+    const inputActivity = createManualInputActivityMonitor();
+    const daemon = createLumosDaemon({
+      driver,
+      configuredLeds: ["caps", "num", "scroll"],
+      clock,
+      inputActivityMonitor: inputActivity.monitor,
+    });
+
+    await daemon.setState("working", "chase-rider", animation, "normal", ["caps"], 5_000, undefined, true);
+    await inputActivity.triggerActivity();
+
+    expect(daemon.getStatus()).toMatchObject({
+      state: "working",
+      activeAnimation: "chase-rider",
+      effectSuppressed: false,
+      originalLockStateCaptured: true,
+      pendingReminder: false,
+    });
   });
 
   it("preserves suppression when a later hook replaces the current state", async () => {
@@ -397,7 +420,7 @@ describe("createLumosDaemon", () => {
     });
   });
 
-  it("clears active when input becomes idle after the lease expired but before the cycle finishes", async () => {
+  it("clears working when input becomes idle after the lease expired but before the cycle finishes", async () => {
     const clock = createControlledClock();
     const driver = createFakeKeyboardDriver(original);
     const inputActivity = createManualInputActivityMonitor();
@@ -408,7 +431,7 @@ describe("createLumosDaemon", () => {
       inputActivityMonitor: inputActivity.monitor,
     });
 
-    await daemon.setState("active", "chase-rider", slowAnimation, "normal", ["caps"], 1_000);
+    await daemon.setState("working", "chase-rider", slowAnimation, "normal", ["caps"], 1_000);
     await inputActivity.triggerActivity();
     await clock.advance(1_001);
     await inputActivity.triggerIdle();
@@ -458,7 +481,7 @@ describe("createLumosDaemon", () => {
       inputActivityMonitor: inputActivity.monitor,
     });
 
-    await daemon.setState("active", "chase-rider", animation, "normal", ["caps"], 5_000);
+    await daemon.setState("working", "chase-rider", animation, "normal", ["caps"], 5_000);
     await daemon.setState("success", "embrace-confirm", animation, "normal", ["caps"], 5_000);
     await inputActivity.triggerActivity(0);
 
@@ -483,7 +506,7 @@ describe("createLumosDaemon", () => {
       inputActivityMonitor: inputActivity.monitor,
     });
 
-    await daemon.setState("active", "chase-rider", animation, "normal", ["caps"], 5_000);
+    await daemon.setState("working", "chase-rider", animation, "normal", ["caps"], 5_000);
 
     expect(inputActivity.getStartOptions(0).ignoredLeds).toEqual(["caps"]);
   });
@@ -511,7 +534,7 @@ describe("createLumosDaemon", () => {
       clock,
     });
 
-    await daemon.setState("active", "chase-rider", animation, "normal", ["caps"], 5_000);
+    await daemon.setState("working", "chase-rider", animation, "normal", ["caps"], 5_000);
     delayOriginalRestore = true;
     const idle = daemon.setState("idle");
     await clock.flush();
@@ -553,7 +576,7 @@ describe("createLumosDaemon", () => {
       clock,
     });
 
-    const staleStart = daemon.setState("active", "chase-rider", animation, "normal", ["caps"], 5_000);
+    const staleStart = daemon.setState("working", "chase-rider", animation, "normal", ["caps"], 5_000);
     await clock.flush();
     const latestStart = daemon.setState("success", "embrace-confirm", animation, "normal", ["caps"], 5_000);
     await latestStart;

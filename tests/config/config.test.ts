@@ -17,21 +17,51 @@ import type { LumosConfig } from "../../src/types";
 const defaultConfig = getDefaultConfig();
 
 describe("config defaults", () => {
-  it("provides the visual-profile based V0.4 default config", () => {
+  it("provides the V0.5 state-kind default config", () => {
     expect(defaultConfig).toMatchObject({
       leds: ["num", "caps", "scroll"],
       defaultTtl: "30m",
       states: {
-        active: { ttl: "10m" },
+        working: { ttl: "10m" },
         blocked: { ttl: "60s" },
         success: { ttl: "10s" },
         error: { ttl: "20s" },
       },
       visualProfiles: {
-        active: {
+        working: {
           oneLed: { animation: "heartbeat", speed: "slow" },
           twoLed: { animation: "chase-pair", speed: "normal" },
           threeLed: { animation: "chase-rider", speed: "normal" },
+        },
+        "working.command": {
+          oneLed: { animation: "heartbeat", speed: "normal" },
+          twoLed: { animation: "chase-pair", speed: "fast" },
+          threeLed: { animation: "scan-pingpong", speed: "fast" },
+        },
+        blocked: {
+          oneLed: { animation: "double-blink", speed: "normal" },
+          twoLed: { animation: "blocked-pair", speed: "normal" },
+          threeLed: { animation: "prompt-shift", speed: "normal" },
+        },
+        "blocked.input": {
+          oneLed: { animation: "double-blink", speed: "slow" },
+          twoLed: { animation: "blocked-pair", speed: "slow" },
+          threeLed: { animation: "prompt-shift", speed: "slow" },
+        },
+        success: {
+          oneLed: { animation: "confirm", speed: "normal" },
+          twoLed: { animation: "confirm-pair", speed: "normal" },
+          threeLed: { animation: "embrace-confirm", speed: "normal" },
+        },
+        error: {
+          oneLed: { animation: "alert-triple", speed: "fast" },
+          twoLed: { animation: "alert-triple", speed: "normal" },
+          threeLed: { animation: "alert-triple", speed: "normal" },
+        },
+        "error.critical": {
+          oneLed: { animation: "alert-triple", speed: "urgent" },
+          twoLed: { animation: "alert-triple", speed: "urgent" },
+          threeLed: { animation: "alert-triple", speed: "urgent" },
         },
       },
       animations: {
@@ -39,6 +69,8 @@ describe("config defaults", () => {
         "double-blink": { type: "sequence" },
         confirm: { type: "sequence" },
         "chase-pair": { type: "sequence" },
+        "blocked-pair": { type: "sequence" },
+        "confirm-pair": { type: "sequence" },
         "chase-rider": { type: "sequence" },
         "scan-pingpong": { type: "sequence" },
         "prompt-shift": { type: "sequence" },
@@ -49,12 +81,12 @@ describe("config defaults", () => {
         codex: {
           enabled: false,
           hooks: {
-            SessionStart: "active",
-            UserPromptSubmit: "active",
-            PreToolUse: "active",
-            PostToolUse: "active",
-            PermissionRequest: "blocked",
-            Stop: "success",
+            SessionStart: { state: "working", kind: "preparing" },
+            UserPromptSubmit: { state: "working", kind: "preparing" },
+            PreToolUse: { state: "working", kind: "tool" },
+            PostToolUse: { state: "working" },
+            PermissionRequest: { state: "blocked", kind: "permission" },
+            Stop: { state: "success", kind: "turn" },
           },
         },
       },
@@ -124,7 +156,7 @@ describe("config validation", () => {
           ...defaultConfig,
           visualProfiles: {
             ...defaultConfig.visualProfiles,
-            active: {
+            working: {
               oneLed: { animation: "missing-animation", speed: "normal" },
               twoLed: { animation: "chase-rider", speed: "normal" },
               threeLed: { animation: "chase-rider", speed: "normal" },
@@ -134,6 +166,23 @@ describe("config validation", () => {
         file,
       ),
     ).toThrow(/unknown animation/i);
+  });
+
+  it("rejects missing built-in state-kind visual profiles", () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "agentlumos-config-"));
+    const file = path.join(dir, "config.json");
+    const incompleteProfiles = { ...defaultConfig.visualProfiles };
+    delete incompleteProfiles["working.command"];
+
+    expect(() =>
+      saveConfig(
+        {
+          ...defaultConfig,
+          visualProfiles: incompleteProfiles,
+        },
+        file,
+      ),
+    ).toThrow(/working\.command/i);
   });
 
   it("rejects incomplete visual profile layouts and invalid speed values", () => {
@@ -146,7 +195,7 @@ describe("config validation", () => {
           ...defaultConfig,
           visualProfiles: {
             ...defaultConfig.visualProfiles,
-            active: {
+            working: {
               oneLed: { animation: "heartbeat", speed: "slow" },
               twoLed: { animation: "chase-rider", speed: "normal" },
             },
@@ -288,7 +337,7 @@ describe("config updates", () => {
           },
         },
         visualProfiles: {
-          active: {
+          working: {
             oneLed: { animation: "custom-chase", speed: "fast" },
             twoLed: { animation: "custom-chase", speed: "fast" },
             threeLed: { animation: "custom-chase", speed: "fast" },
@@ -303,7 +352,7 @@ describe("config updates", () => {
         },
       },
       visualProfiles: {
-        active: {
+        working: {
           oneLed: { animation: "custom-chase", speed: "fast" },
         },
       },
@@ -353,8 +402,8 @@ describe("config updates", () => {
         codex: {
           enabled: true,
           hooks: {
-            SessionStart: "active",
-            Stop: "error",
+            SessionStart: { state: "working", kind: "preparing" },
+            Stop: { state: "error" },
           },
         },
       },

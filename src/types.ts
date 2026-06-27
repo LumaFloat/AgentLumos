@@ -1,7 +1,18 @@
 export type LedName = "caps" | "num" | "scroll";
 export type LedSelector = LedName | "first" | "middle" | "last" | "all" | "edges";
-export type LumosState = "idle" | "active" | "blocked" | "success" | "error";
+export type LumosState = "idle" | "working" | "blocked" | "success" | "error";
 export type ActiveLumosState = Exclude<LumosState, "idle">;
+export type LumosStateKind =
+  | "preparing"
+  | "thinking"
+  | "responding"
+  | "tool"
+  | "command"
+  | "permission"
+  | "input"
+  | "turn"
+  | "task"
+  | "critical";
 export type AnimationType = "sequence";
 export type AnimationName = string;
 export type AnimationSpeed = "slow" | "normal" | "fast" | "urgent";
@@ -37,8 +48,15 @@ export interface VisualProfileConfig {
 
 export type StateConfigMap = Record<ActiveLumosState, LumosStateConfig>;
 export type AnimationConfigMap = Record<AnimationName, LumosAnimationConfig>;
-export type VisualProfileMap = Record<ActiveLumosState, VisualProfileConfig>;
-export type HookIntegrationMap = Record<string, LumosState>;
+export type VisualProfileKey = string;
+export type VisualProfileMap = Record<VisualProfileKey, VisualProfileConfig>;
+
+export interface LumosStateSignal {
+  state: LumosState;
+  kind?: LumosStateKind;
+}
+
+export type HookIntegrationMap = Record<string, LumosStateSignal>;
 
 export interface HookIntegrationConfig {
   enabled: boolean;
@@ -68,6 +86,7 @@ export interface RenderStep {
 export interface LumosStatus {
   daemon: "running";
   state: LumosState;
+  kind: LumosStateKind | null;
   configuredLeds: LedName[];
   activeAnimation: AnimationName | null;
   ttlRemainingMs: number | null;
@@ -79,14 +98,14 @@ export interface LumosStatus {
 }
 
 export type DaemonRequest =
-  | { type: "setState"; state: ActiveLumosState | "idle"; ttlMs?: number; overrides?: LumosStateOverride }
+  | { type: "setState"; state: ActiveLumosState | "idle"; kind?: LumosStateKind; ttlMs?: number; overrides?: LumosStateOverride; ignoreInputSuppression?: boolean }
   | { type: "pokeLed"; led: LedName }
   | { type: "getStatus" }
   | { type: "getConfig" }
   | { type: "setConfig"; patch: Partial<LumosConfig> }
   | { type: "resetConfig" }
   | { type: "shutdown" }
-  | { type: "runDemo"; overrides?: LumosStateOverride };
+  | { type: "runDemo"; overrides?: LumosStateOverride; ignoreInputSuppression?: boolean };
 
 export type DaemonResponse =
   | { ok: true; warning?: string; data?: unknown }

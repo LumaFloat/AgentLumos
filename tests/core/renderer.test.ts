@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 import { getDefaultConfig } from "../../src/config/config";
 import { renderState } from "../../src/core/renderer";
 import type { AnimationName, LumosAnimationConfig } from "../../src/types";
@@ -9,15 +9,17 @@ function stateForAnimation(animationName: AnimationName) {
   switch (animationName) {
     case "chase-rider":
     case "scan-pingpong":
-      return "active";
+      return "working";
     case "prompt-shift":
+    case "blocked-pair":
       return "blocked";
     case "embrace-confirm":
+    case "confirm-pair":
       return "success";
     case "alert-triple":
       return "error";
     default:
-      return "active";
+      return "working";
   }
 }
 
@@ -42,7 +44,7 @@ describe("renderState", () => {
   it("renders a sequence animation as ordered LED pulses", () => {
     expect(
       renderState({
-        state: "active",
+        state: "working",
         animationName: "custom-chase",
         animation: chase,
         configuredLeds: ["caps", "num", "scroll"],
@@ -58,7 +60,7 @@ describe("renderState", () => {
   it("renders animation steps directly from the animation definition", () => {
     expect(
       renderState({
-        state: "active",
+        state: "working",
         animationName: "custom-chase",
         animation: chase,
         configuredLeds: ["caps", "num", "scroll"],
@@ -85,7 +87,7 @@ describe("renderState", () => {
   it("still renders when no LEDs are configured", () => {
     expect(
       renderState({
-        state: "active",
+        state: "working",
         animationName: "custom-chase",
         animation: chase,
         configuredLeds: [],
@@ -96,7 +98,7 @@ describe("renderState", () => {
   it("does not write unconfigured Lock LEDs", () => {
     expect(
       renderState({
-        state: "active",
+        state: "working",
         animationName: "custom-chase",
         animation: chase,
         configuredLeds: ["caps"],
@@ -110,7 +112,7 @@ describe("renderState", () => {
   it("resolves position selectors using configured LED order", () => {
     expect(
       renderState({
-        state: "active",
+        state: "working",
         animationName: "custom-position",
         animation: {
           type: "sequence",
@@ -209,6 +211,30 @@ describe("renderState", () => {
     ]);
   });
 
+  it("uses left-right motion for the two-LED blocked pair animation", () => {
+    expect(renderDefault("blocked-pair", ["caps", "num"])).toEqual([
+      { atMs: 0, values: { caps: true, num: false } },
+      { atMs: 160, values: { caps: false, num: false } },
+      { atMs: 280, values: { caps: false, num: true } },
+      { atMs: 440, values: { caps: false, num: false } },
+      { atMs: 560, values: { caps: true, num: false } },
+      { atMs: 720, values: { caps: false, num: false } },
+      { atMs: 840, values: { caps: false, num: true } },
+      { atMs: 1000, values: { caps: false, num: false } },
+    ]);
+  });
+
+  it("uses a sweep-then-hold pattern for the two-LED success pair animation", () => {
+    expect(renderDefault("confirm-pair", ["caps", "num"])).toEqual([
+      { atMs: 0, values: { caps: true, num: false } },
+      { atMs: 160, values: { caps: false, num: false } },
+      { atMs: 260, values: { caps: false, num: true } },
+      { atMs: 420, values: { caps: false, num: false } },
+      { atMs: 540, values: { caps: true, num: true } },
+      { atMs: 1060, values: { caps: false, num: false } },
+    ]);
+  });
+
   it("scales animation timings with speed", () => {
     expect(
       renderState({
@@ -229,7 +255,7 @@ describe("renderState", () => {
   it("does not replace custom one-LED animations, but compacts duplicate physical states", () => {
     expect(
       renderState({
-        state: "active",
+        state: "working",
         animationName: "custom-one-led",
         animation: {
           type: "sequence",
@@ -251,7 +277,7 @@ describe("renderState", () => {
   it("compacts custom animation steps that resolve to the same physical state", () => {
     expect(
       renderState({
-        state: "active",
+        state: "working",
         animationName: "custom-ignored-led",
         animation: {
           type: "sequence",

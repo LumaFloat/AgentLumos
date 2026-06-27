@@ -1,6 +1,6 @@
-# AgentLumos Windows Manual Test
+﻿# AgentLumos Windows Manual Test
 
-Use this checklist on a real Windows machine before calling v0.4.0 ready.
+Use this checklist on a real Windows machine before calling v0.5.0 ready.
 
 ## Prerequisites
 
@@ -68,8 +68,8 @@ lumos config set leds caps,num
 Run each preview command:
 
 ```powershell
-# Preview the active animation.
-lumos show active
+# Preview the working animation.
+lumos show working
 
 # Preview the blocked animation.
 lumos show blocked
@@ -86,7 +86,7 @@ lumos off
 
 Confirm:
 
-- `active` shows the working-state animation.
+- `working` shows the working-state animation.
 - `blocked` shows the waiting-for-input animation.
 - `success` shows a visible completion animation.
 - `error` shows a more prominent failure animation.
@@ -100,7 +100,7 @@ Run each layout on Windows hardware and confirm the original Lock state is resto
 
 ```powershell
 lumos config set leds caps
-lumos show active
+lumos show working
 lumos show blocked
 lumos show success
 lumos show error
@@ -109,7 +109,7 @@ lumos off
 
 Expected:
 
-- `active`: one short pulse with a long pause.
+- `working`: one short pulse with a long pause.
 - `blocked`: two short pulses.
 - `success`: one longer confirmation pulse.
 - `error`: three fast pulses.
@@ -118,7 +118,7 @@ Expected:
 
 ```powershell
 lumos config set leds caps,num
-lumos show active
+lumos show working
 lumos show blocked
 lumos show success
 lumos show error
@@ -127,7 +127,7 @@ lumos off
 
 Expected:
 
-- `active`: left then right movement.
+- `working`: left then right movement.
 - `blocked`: two short together pulses.
 - `success`: one longer together pulse.
 - `error`: three fast together pulses.
@@ -136,7 +136,7 @@ Expected:
 
 ```powershell
 lumos config set leds num,caps,scroll
-lumos show active
+lumos show working
 lumos show blocked
 lumos show success
 lumos show error
@@ -148,8 +148,8 @@ Expected: behavior matches the default three-LED visual profiles.
 ## 5. Lease and suppression test
 
 ```powershell
-# Set a long-lived active lease.
-lumos set active --ttl 10m
+# Set a long-lived working lease.
+lumos set working --ttl 10m
 
 # Set short-lived notification states.
 lumos set blocked --ttl 5s
@@ -162,7 +162,7 @@ lumos off
 
 Confirm:
 
-- `active` renews when the matching hook fires again and does not replay after expiry.
+- `working` renews when the matching hook fires again and does not replay after expiry.
 - `blocked`, `success`, and `error` can replay once after the keyboard becomes idle if they expired while you were typing.
 - `lumos off` clears both the visible state and any pending reminder.
 

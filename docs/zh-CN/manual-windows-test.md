@@ -1,4 +1,4 @@
-# Windows 手动测试指南
+﻿# Windows 手动测试指南
 
 本文用于在 Windows 本机上手动验证 AgentLumos 的基础功能和键盘 Lock LED 行为。
 
@@ -49,8 +49,8 @@ lumos show
 ## 4. 租约与静音测试
 
 ```powershell
-# 设置一个较长的 active 租约。
-lumos set active --ttl 10m
+# 设置一个较长的 working 租约。
+lumos set working --ttl 10m
 
 # 设置短 TTL 的状态。
 lumos set blocked --ttl 5s
@@ -63,7 +63,7 @@ lumos off
 
 重点观察：
 
-- `active` 在对应 hook 再次到来时会续租，过期后不会再回放。
+- `working` 在对应 hook 再次到来时会续租，过期后不会再回放。
 - `blocked`、`success`、`error` 如果在你输入时过期，等输入空闲后最多会回放一次。
 - `lumos off` 会同时清除可见状态和待回放状态。
 
@@ -89,8 +89,8 @@ lumos config set leds caps,num
 然后依次执行：
 
 ```powershell
-# 预览 active 动画。
-lumos show active
+# 预览 working 动画。
+lumos show working
 
 # 预览 blocked 动画。
 lumos show blocked
@@ -107,7 +107,7 @@ lumos off
 
 观察：
 
-- `active` 是否是持续的工作态动画。
+- `working` 是否是持续的工作态动画。
 - `blocked` 是否是等待输入的提示态动画。
 - `success` 是否是明显但短促的完成提示。
 - `error` 是否是更醒目的失败提示。
@@ -121,7 +121,7 @@ lumos off
 
 ```powershell
 lumos config set leds caps
-lumos show active
+lumos show working
 lumos show blocked
 lumos show success
 lumos show error
@@ -130,7 +130,7 @@ lumos off
 
 预期：
 
-- `active`：一次短闪，然后长暂停。
+- `working`：一次短闪，然后长暂停。
 - `blocked`：两次短闪。
 - `success`：一次较长确认闪烁。
 - `error`：三次快速闪烁。
@@ -139,7 +139,7 @@ lumos off
 
 ```powershell
 lumos config set leds caps,num
-lumos show active
+lumos show working
 lumos show blocked
 lumos show success
 lumos show error
@@ -148,7 +148,7 @@ lumos off
 
 预期：
 
-- `active`：左灯再右灯的移动效果。
+- `working`：左灯再右灯的移动效果。
 - `blocked`：两次双灯短闪。
 - `success`：一次较长双灯确认闪烁。
 - `error`：三次快速双灯闪烁。
@@ -157,7 +157,7 @@ lumos off
 
 ```powershell
 lumos config set leds num,caps,scroll
-lumos show active
+lumos show working
 lumos show blocked
 lumos show success
 lumos show error

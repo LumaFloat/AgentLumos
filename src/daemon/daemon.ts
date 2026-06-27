@@ -1,7 +1,7 @@
 import type { KeyboardDriver } from "../drivers/keyboard/driver";
 import type { InputActivityMonitor, InputActivitySubscription } from "../drivers/input/activity-monitor";
 import { createNoopInputActivityMonitor } from "../drivers/input/activity-monitor";
-import type { AnimationName, AnimationSpeed, LedName, LockState, LumosAnimationConfig, LumosState, LumosStatus } from "../types";
+import type { AnimationName, AnimationSpeed, LedName, LockState, LumosAnimationConfig, LumosState, LumosStateKind, LumosStatus } from "../types";
 import { runEffectLoop, type EffectClock } from "./effect-runner";
 import { cloneLockState, createIdleStatus } from "./status";
 
@@ -23,6 +23,8 @@ export interface LumosDaemon {
     speed?: AnimationSpeed,
     configuredLeds?: readonly LedName[],
     ttlMs?: number,
+    kind?: LumosStateKind,
+    ignoreInputSuppression?: boolean,
   ): Promise<void>;
   pokeLed(led: LedName): Promise<void>;
   shutdown(): Promise<void>;
@@ -34,6 +36,7 @@ type ActiveState = Exclude<LumosState, "idle">;
 
 interface EffectDescriptor {
   state: ActiveState;
+  kind?: LumosStateKind;
   animationName: AnimationName;
   animation: LumosAnimationConfig;
   speed: AnimationSpeed;
@@ -41,6 +44,7 @@ interface EffectDescriptor {
   ttlMs: number;
   receivedAt: number;
   expiresAt: number | null;
+  ignoreInputSuppression: boolean;
 }
 
 interface PendingReminder {
@@ -66,13 +70,13 @@ function minimumReminderMs(state: ActiveState): number {
       return 3_000;
     case "error":
       return 5_000;
-    case "active":
+    case "working":
       return 0;
   }
 }
 
 function canDeferReminder(state: ActiveState): boolean {
-  return state !== "active";
+  return state !== "working";
 }
 
 export function createLumosDaemon(options: LumosDaemonOptions): LumosDaemon {
@@ -118,6 +122,7 @@ export function createLumosDaemon(options: LumosDaemonOptions): LumosDaemon {
     status = {
       ...status,
       state: descriptor.state,
+      kind: descriptor.kind ?? null,
       configuredLeds: [...descriptor.configuredLeds],
       activeAnimation,
       ttlRemainingMs: getRemainingTtlMs(descriptor),
@@ -132,6 +137,7 @@ export function createLumosDaemon(options: LumosDaemonOptions): LumosDaemon {
     status = {
       ...status,
       state: "idle",
+      kind: null,
       configuredLeds: [...options.configuredLeds],
       activeAnimation: null,
       ttlRemainingMs: null,
@@ -144,15 +150,18 @@ export function createLumosDaemon(options: LumosDaemonOptions): LumosDaemon {
 
   function createEffectDescriptor(
     state: ActiveState,
+    kind: LumosStateKind | undefined,
     animationName: AnimationName,
     animation: LumosAnimationConfig,
     speed: AnimationSpeed,
     configuredLeds: readonly LedName[],
     ttlMs: number,
+    ignoreInputSuppression = false,
   ): EffectDescriptor {
     const receivedAt = clock.now();
     return {
       state,
+      kind,
       animationName,
       animation,
       speed,
@@ -160,6 +169,7 @@ export function createLumosDaemon(options: LumosDaemonOptions): LumosDaemon {
       ttlMs,
       receivedAt,
       expiresAt: ttlMs === 0 ? null : receivedAt + ttlMs,
+      ignoreInputSuppression,
     };
   }
 
@@ -303,11 +313,13 @@ export function createLumosDaemon(options: LumosDaemonOptions): LumosDaemon {
 
     const replayDescriptor = createEffectDescriptor(
       reminder.state,
+      reminder.kind,
       reminder.animationName,
       reminder.animation,
       reminder.speed,
       reminder.configuredLeds,
       minimumReminderMs(reminder.state),
+      reminder.ignoreInputSuppression,
     );
 
     await startSustainedEffect(replayDescriptor, false);
@@ -387,7 +399,9 @@ export function createLumosDaemon(options: LumosDaemonOptions): LumosDaemon {
 
       const controller = new AbortController();
       activeController = controller;
-      startInputActivityMonitor(version, descriptor.configuredLeds);
+      if (!descriptor.ignoreInputSuppression) {
+        startInputActivityMonitor(version, descriptor.configuredLeds);
+      }
       activeTask = runEffectLoop({
         driver: options.driver,
         state: descriptor.state,
@@ -399,7 +413,7 @@ export function createLumosDaemon(options: LumosDaemonOptions): LumosDaemon {
         ttlMs: descriptor.ttlMs,
         clock,
         signal: controller.signal,
-        isSuppressed: () => status.effectSuppressed,
+        isSuppressed: () => !descriptor.ignoreInputSuppression && status.effectSuppressed,
       })
         .then(async () => {
           await finishVisibleEffect(version, descriptor);
@@ -461,6 +475,8 @@ export function createLumosDaemon(options: LumosDaemonOptions): LumosDaemon {
       speed: AnimationSpeed = "normal",
       configuredLeds: readonly LedName[] = options.configuredLeds,
       ttlMs = defaultTtlMs,
+      kind?: LumosStateKind,
+      ignoreInputSuppression = false,
     ): Promise<void> {
       if (state === "idle") {
         await restoreOriginalState();
@@ -471,8 +487,8 @@ export function createLumosDaemon(options: LumosDaemonOptions): LumosDaemon {
         throw new Error(`Missing config for state: ${state}`);
       }
 
-      const descriptor = createEffectDescriptor(state, animationName, animation, speed, configuredLeds, ttlMs);
-      await startSustainedEffect(descriptor, status.effectSuppressed);
+      const descriptor = createEffectDescriptor(state, kind, animationName, animation, speed, configuredLeds, ttlMs, ignoreInputSuppression);
+      await startSustainedEffect(descriptor, ignoreInputSuppression ? false : status.effectSuppressed);
     },
 
     async pokeLed(led: LedName): Promise<void> {
