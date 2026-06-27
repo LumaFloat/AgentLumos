@@ -34,6 +34,7 @@ describe("runEffectCycle", () => {
     await runEffectCycle({
       driver,
       state: "success",
+      animationName: "custom-cycle",
       animation,
       configuredLeds: ["caps", "num"],
       originalLockState: original,
@@ -43,6 +44,34 @@ describe("runEffectCycle", () => {
     expect(driver.getWriteHistory()).toEqual([
       { caps: true, num: true, scroll: false },
       { caps: false, num: false, scroll: false },
+    ]);
+  });
+
+  it("plays the one-LED reduced built-in animation without touching unconfigured LEDs", async () => {
+    const originalState: LockState = { caps: false, num: true, scroll: true };
+    const driver = createFakeKeyboardDriver(originalState);
+
+    await runEffectCycle({
+      driver,
+      state: "blocked",
+      animationName: "prompt-shift",
+      animation: {
+        type: "sequence",
+        steps: [
+          { leds: ["first", "middle"], onMs: 220, offMs: 120 },
+          { leds: ["middle", "last"], onMs: 220, offMs: 520 },
+        ],
+      },
+      configuredLeds: ["caps"],
+      originalLockState: originalState,
+      clock: createManualClock(),
+    });
+
+    expect(driver.getWriteHistory()).toEqual([
+      { caps: true, num: true, scroll: true },
+      { caps: false, num: true, scroll: true },
+      { caps: true, num: true, scroll: true },
+      { caps: false, num: true, scroll: true },
     ]);
   });
 });
@@ -55,6 +84,7 @@ describe("runEffectLoop", () => {
     await runEffectLoop({
       driver,
       state: "active",
+      animationName: "custom-cycle",
       animation,
       configuredLeds: ["caps", "num"],
       originalLockState: original,
@@ -72,6 +102,7 @@ describe("runEffectLoop", () => {
     await runEffectLoop({
       driver,
       state: "active",
+      animationName: "custom-cycle",
       animation,
       configuredLeds: [],
       originalLockState: original,
@@ -95,6 +126,7 @@ describe("runEffectLoop", () => {
     await runEffectLoop({
       driver,
       state: "active",
+      animationName: "custom-cycle",
       animation,
       configuredLeds: ["caps", "num"],
       originalLockState: original,
@@ -104,5 +136,35 @@ describe("runEffectLoop", () => {
     });
 
     expect(driver.getWriteHistory().at(-1)).not.toEqual(original);
+  });
+
+  it("plays the two-LED reduced built-in animation and restores the original full lock state", async () => {
+    const originalState: LockState = { caps: false, num: true, scroll: true };
+    const driver = createFakeKeyboardDriver(originalState);
+
+    await runEffectLoop({
+      driver,
+      state: "success",
+      animationName: "embrace-confirm",
+      animation: {
+        type: "sequence",
+        steps: [
+          { leds: ["edges"], onMs: 280, offMs: 140 },
+          { leds: ["middle"], onMs: 360, offMs: 140 },
+          { leds: ["edges"], onMs: 280, offMs: 140 },
+          { leds: ["middle"], onMs: 360, offMs: 1600 },
+        ],
+      },
+      configuredLeds: ["caps", "num"],
+      originalLockState: originalState,
+      ttlMs: 500,
+      clock: createManualClock(),
+    });
+
+    expect(driver.getWriteHistory()).toEqual([
+      { caps: true, num: true, scroll: true },
+      { caps: false, num: false, scroll: true },
+      originalState,
+    ]);
   });
 });

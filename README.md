@@ -76,7 +76,7 @@ lumos hook check
 
 ## Basic Usage
 
-The main AgentLumos flow is: configure the visible Lock LEDs on your keyboard, then install the hook for the agent you use. After that, Codex or Claude Code hooks trigger `active`, `blocked`, `success`, and `error` automatically. You should not need to run state commands manually during normal use.
+Usually you only need to configure the visible Lock LEDs on your keyboard, then install the hook for the agent you use. After that, Codex or Claude Code hooks trigger `active`, `blocked`, `success`, and `error` automatically. You should not need to run state commands manually during normal use.
 
 ### 1. Configure Your Keyboard LEDs
 
@@ -94,6 +94,10 @@ lumos config set leds caps,num
 # Common three-LED keyboard: use your actual left-to-right order.
 lumos config set leds num,caps,scroll
 ```
+
+AgentLumos automatically adapts built-in status animations to the number of configured visible LEDs. Three-LED layouts keep the full default animation. Two-LED layouts use left/right movement and together-pulse patterns. One-LED layouts use distinct pulse rhythms so `active`, `blocked`, `success`, and `error` remain recognizable.
+
+Custom animations are not replaced by reduced built-ins. They are still resolved against the configured LEDs, and redundant consecutive physical states are skipped.
 
 ### 2. Install The Agent Hook
 
@@ -209,8 +213,6 @@ Use `lumos config clean` to remove the current config and let AgentLumos regener
 AgentLumos is currently Windows-first. The current driver targets keyboard Lock LEDs through Windows input behavior.
 
 Linux and macOS hardware drivers are not implemented yet. Some keyboards, laptop firmware, KVMs, remote desktops, and vendor utilities may expose Lock state differently or not expose visible Lock LEDs at all.
-
-The broader direction is to make agent state visible through glanceable hardware indicators. Future work may explore keyboard backlight or RGB zones where vendor support is practical, dedicated external status-light hardware, cross-platform drivers, stronger interrupted-session recovery, broader keyboard compatibility notes, and more integrations.
 
 ## Documentation
 

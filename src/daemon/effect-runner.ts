@@ -1,6 +1,6 @@
 import { renderState } from "../core/renderer";
 import type { KeyboardDriver } from "../drivers/keyboard/driver";
-import type { LedName, LockState, LumosAnimationConfig, LumosState } from "../types";
+import type { AnimationName, LedName, LockState, LumosAnimationConfig, LumosState } from "../types";
 import { cloneLockState } from "./status";
 
 export interface EffectClock {
@@ -11,6 +11,7 @@ export interface EffectClock {
 export interface RunEffectOptions {
   driver: KeyboardDriver;
   state: Exclude<LumosState, "idle">;
+  animationName: AnimationName;
   animation: LumosAnimationConfig;
   configuredLeds: readonly LedName[];
   originalLockState: LockState;
@@ -46,6 +47,7 @@ async function playCycle(
   driver: KeyboardDriver,
   clock: EffectClock,
   state: Exclude<LumosState, "idle">,
+  animationName: AnimationName,
   animation: LumosAnimationConfig,
   configuredLeds: readonly LedName[],
   originalLockState: LockState,
@@ -54,6 +56,7 @@ async function playCycle(
 ): Promise<void> {
   const steps = renderState({
     state,
+    animationName,
     animation,
     configuredLeds,
   });
@@ -93,31 +96,36 @@ async function restoreOriginal(
 }
 
 export async function runEffectCycle(options: RunEffectOptions): Promise<void> {
-  const { driver, state, animation, configuredLeds, originalLockState, clock, signal } = options;
+  const { driver, state, animationName, animation, configuredLeds, originalLockState, clock, signal } = options;
 
   if (configuredLeds.length === 0) {
     return;
   }
 
-  await playCycle(driver, clock, state, animation, configuredLeds, originalLockState, signal);
+  await playCycle(driver, clock, state, animationName, animation, configuredLeds, originalLockState, signal);
 }
 
 export async function runEffectLoop(options: RunEffectOptions): Promise<void> {
-  const { driver, state, animation, configuredLeds, originalLockState, ttlMs, clock, signal, isSuppressed } = options;
+  const { driver, state, animationName, animation, configuredLeds, originalLockState, ttlMs, clock, signal, isSuppressed } = options;
 
   if (ttlMs === undefined) {
     throw new Error("runEffectLoop requires a ttlMs value.");
   }
 
+  if (configuredLeds.length === 0) {
+    await restoreOriginal(driver, originalLockState);
+    return;
+  }
+
   if (ttlMs === 0) {
     while (!isAborted(signal)) {
-      await playCycle(driver, clock, state, animation, configuredLeds, originalLockState, signal, isSuppressed);
+      await playCycle(driver, clock, state, animationName, animation, configuredLeds, originalLockState, signal, isSuppressed);
     }
   } else {
     const endAt = clock.now() + ttlMs;
 
     while (clock.now() < endAt && !isAborted(signal)) {
-      await playCycle(driver, clock, state, animation, configuredLeds, originalLockState, signal, isSuppressed);
+      await playCycle(driver, clock, state, animationName, animation, configuredLeds, originalLockState, signal, isSuppressed);
     }
   }
 

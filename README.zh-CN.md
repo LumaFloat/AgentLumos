@@ -76,7 +76,7 @@ lumos hook check
 
 ## 基础使用
 
-AgentLumos 的主要使用路径是：先根据自己的键盘配置可见的 Lock 指示灯，再根据自己使用的 agent 安装对应 hook。之后 Codex 或 Claude Code 运行时会通过 hooks 自动触发 `active`、`blocked`、`success`、`error` 等状态，不需要日常手动执行状态命令。
+通常只需要先配置键盘上可见的 Lock 指示灯，再安装对应 agent 的 hook。之后 Codex 或 Claude Code 运行时会通过 hooks 自动触发 `active`、`blocked`、`success`、`error` 等状态，不需要日常手动执行状态命令。
 
 ### 1. 配置你的键盘灯
 
@@ -94,6 +94,10 @@ lumos config set leds caps,num
 # 常见三灯键盘：按实际从左到右顺序填写。
 lumos config set leds num,caps,scroll
 ```
+
+AgentLumos 会根据已配置的可见灯数量自动适配内置状态动画。三灯布局保持完整默认动画；两灯布局使用左右移动和双灯脉冲；一灯布局使用不同的脉冲节奏，让 `active`、`blocked`、`success` 和 `error` 仍然容易区分。
+
+自定义动画不会被替换成内置降级动画。它们只会按已配置灯进行 selector 解析，并跳过连续重复的物理状态写入。
 
 ### 2. 安装对应 agent hook
 
@@ -209,8 +213,6 @@ lumos config clean
 AgentLumos 当前优先支持 Windows。当前驱动通过 Windows 输入行为控制键盘 Lock 指示灯。
 
 Linux 和 macOS 硬件驱动暂未实现。部分键盘、笔记本固件、KVM、远程桌面或厂商工具可能会用不同方式暴露 Lock 状态，也可能没有可见的 Lock 指示灯。
-
-更长期的方向是通过一眼可见的硬件指示方式展示 agent 状态。后续可能探索键盘背光或 RGB 背光区域、专用外部状态灯硬件、跨平台驱动、更强的异常中断恢复、更完整的键盘兼容性记录和更多集成。
 
 ## 文档
 

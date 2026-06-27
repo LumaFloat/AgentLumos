@@ -113,7 +113,60 @@ lumos off
 - `error` 是否是更醒目的失败提示。
 - `off` 是否恢复到原始 Lock 状态。
 
-## 6. Hook 测试
+## 6. 少灯布局测试
+
+在 Windows 实体键盘上运行每种布局，并确认 `lumos off` 和 TTL 结束后会恢复原始 Lock 状态。
+
+### 一颗可见灯
+
+```powershell
+lumos config set leds caps
+lumos show active
+lumos show blocked
+lumos show success
+lumos show error
+lumos off
+```
+
+预期：
+
+- `active`：一次短闪，然后长暂停。
+- `blocked`：两次短闪。
+- `success`：一次较长确认闪烁。
+- `error`：三次快速闪烁。
+
+### 两颗可见灯
+
+```powershell
+lumos config set leds caps,num
+lumos show active
+lumos show blocked
+lumos show success
+lumos show error
+lumos off
+```
+
+预期：
+
+- `active`：左灯再右灯的移动效果。
+- `blocked`：两次双灯短闪。
+- `success`：一次较长双灯确认闪烁。
+- `error`：三次快速双灯闪烁。
+
+### 三颗可见灯
+
+```powershell
+lumos config set leds num,caps,scroll
+lumos show active
+lumos show blocked
+lumos show success
+lumos show error
+lumos off
+```
+
+预期：行为和 v0.3 三灯默认动画一致。
+
+## 7. Hook 测试
 
 ```powershell
 # 检查 hook 接入状态。
@@ -141,7 +194,7 @@ lumos hook uninstall claude-code
 - `hook install` 是否写入目标工具的 hook 配置。
 - `hook uninstall` 是否移除 AgentLumos 管理的 hook 配置。
 
-## 7. 常见问题
+## 8. 常见问题
 
 - 如果动画亮了但键盘灯没有变化，先确认是否是笔记本内置键盘、外接键盘，或者驱动不支持该灯。
 - 如果某个灯顺序不对，先修正 `lumos config set leds ...`。

@@ -1,4 +1,78 @@
-import type { LedName, LedSelector, LockState, LumosAnimationConfig, RenderStep } from "../types";
+import type { AnimationName, LedName, LedSelector, LockState, LumosAnimationConfig, RenderStep } from "../types";
+
+const BUILT_IN_ANIMATION_NAMES = new Set<AnimationName>([
+  "chase-rider",
+  "scan-pingpong",
+  "prompt-shift",
+  "embrace-confirm",
+  "alert-triple",
+]);
+
+const ONE_LED_REDUCED_ANIMATIONS: Record<AnimationName, LumosAnimationConfig> = {
+  "chase-rider": {
+    type: "sequence",
+    steps: [{ leds: ["all"], onMs: 180, offMs: 1200 }],
+  },
+  "scan-pingpong": {
+    type: "sequence",
+    steps: [{ leds: ["all"], onMs: 180, offMs: 1200 }],
+  },
+  "prompt-shift": {
+    type: "sequence",
+    steps: [
+      { leds: ["all"], onMs: 180, offMs: 120 },
+      { leds: ["all"], onMs: 180, offMs: 700 },
+    ],
+  },
+  "embrace-confirm": {
+    type: "sequence",
+    steps: [{ leds: ["all"], onMs: 500, offMs: 1600 }],
+  },
+  "alert-triple": {
+    type: "sequence",
+    steps: [
+      { leds: ["all"], onMs: 120, offMs: 100 },
+      { leds: ["all"], onMs: 120, offMs: 100 },
+      { leds: ["all"], onMs: 120, offMs: 900 },
+    ],
+  },
+};
+
+const TWO_LED_REDUCED_ANIMATIONS: Record<AnimationName, LumosAnimationConfig> = {
+  "chase-rider": {
+    type: "sequence",
+    steps: [
+      { leds: ["first"], onMs: 180, offMs: 240 },
+      { leds: ["last"], onMs: 180, offMs: 1200 },
+    ],
+  },
+  "scan-pingpong": {
+    type: "sequence",
+    steps: [
+      { leds: ["first"], onMs: 180, offMs: 240 },
+      { leds: ["last"], onMs: 180, offMs: 1200 },
+    ],
+  },
+  "prompt-shift": {
+    type: "sequence",
+    steps: [
+      { leds: ["all"], onMs: 180, offMs: 120 },
+      { leds: ["all"], onMs: 180, offMs: 700 },
+    ],
+  },
+  "embrace-confirm": {
+    type: "sequence",
+    steps: [{ leds: ["all"], onMs: 500, offMs: 1600 }],
+  },
+  "alert-triple": {
+    type: "sequence",
+    steps: [
+      { leds: ["all"], onMs: 120, offMs: 100 },
+      { leds: ["all"], onMs: 120, offMs: 100 },
+      { leds: ["all"], onMs: 120, offMs: 900 },
+    ],
+  },
+};
 
 function setLedGroup(
   activeLeds: readonly LedName[],
@@ -58,19 +132,64 @@ function resolveLedSelectors(selectors: readonly LedSelector[], configuredLeds: 
   return resolved;
 }
 
+function selectAnimationForLayout(
+  animationName: AnimationName,
+  animation: LumosAnimationConfig,
+  configuredLeds: readonly LedName[],
+): LumosAnimationConfig {
+  if (!BUILT_IN_ANIMATION_NAMES.has(animationName)) {
+    return animation;
+  }
+
+  if (configuredLeds.length === 1) {
+    return ONE_LED_REDUCED_ANIMATIONS[animationName] ?? animation;
+  }
+
+  if (configuredLeds.length === 2) {
+    return TWO_LED_REDUCED_ANIMATIONS[animationName] ?? animation;
+  }
+
+  return animation;
+}
+
+function sameValues(
+  left: Partial<LockState>,
+  right: Partial<LockState>,
+  configuredLeds: readonly LedName[],
+): boolean {
+  return configuredLeds.every((led) => left[led] === right[led]);
+}
+
+function compactSteps(steps: readonly RenderStep[], configuredLeds: readonly LedName[]): RenderStep[] {
+  const compacted: RenderStep[] = [];
+
+  for (const step of steps) {
+    const previous = compacted[compacted.length - 1];
+    if (previous && sameValues(previous.values, step.values, configuredLeds)) {
+      continue;
+    }
+
+    compacted.push(step);
+  }
+
+  return compacted;
+}
+
 export function buildAnimationSteps(
+  animationName: AnimationName,
   animation: LumosAnimationConfig,
   configuredLeds: readonly LedName[],
 ): RenderStep[] {
+  const selectedAnimation = selectAnimationForLayout(animationName, animation, configuredLeds);
   const steps: RenderStep[] = [];
   let atMs = 0;
 
-  for (const sequenceStep of animation.steps) {
+  for (const sequenceStep of selectedAnimation.steps) {
     steps.push({ atMs, values: setLedGroup(resolveLedSelectors(sequenceStep.leds, configuredLeds), configuredLeds) });
     atMs += sequenceStep.onMs;
     steps.push({ atMs, values: setLedGroup([], configuredLeds) });
     atMs += sequenceStep.offMs;
   }
 
-  return steps;
+  return compactSteps(steps, configuredLeds);
 }

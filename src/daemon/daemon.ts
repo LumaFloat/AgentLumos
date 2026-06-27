@@ -386,6 +386,7 @@ export function createLumosDaemon(options: LumosDaemonOptions): LumosDaemon {
       activeTask = runEffectLoop({
         driver: options.driver,
         state: descriptor.state,
+        animationName: descriptor.animationName,
         animation: descriptor.animation,
         configuredLeds: descriptor.configuredLeds,
         originalLockState: snapshot,

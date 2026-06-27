@@ -1,6 +1,6 @@
 # AgentLumos Windows Manual Test
 
-Use this checklist on a real Windows machine before calling v0.2.1 ready.
+Use this checklist on a real Windows machine before calling v0.4.0 ready.
 
 ## Prerequisites
 
@@ -92,7 +92,60 @@ Confirm:
 - `error` shows a more prominent failure animation.
 - `off` restores the original Lock state.
 
-## 4. Lease and suppression test
+## 4. Reduced LED layout test
+
+Run each layout on Windows hardware and confirm the original Lock state is restored after `lumos off` and TTL expiry.
+
+### One visible LED
+
+```powershell
+lumos config set leds caps
+lumos show active
+lumos show blocked
+lumos show success
+lumos show error
+lumos off
+```
+
+Expected:
+
+- `active`: one short pulse with a long pause.
+- `blocked`: two short pulses.
+- `success`: one longer confirmation pulse.
+- `error`: three fast pulses.
+
+### Two visible LEDs
+
+```powershell
+lumos config set leds caps,num
+lumos show active
+lumos show blocked
+lumos show success
+lumos show error
+lumos off
+```
+
+Expected:
+
+- `active`: left then right movement.
+- `blocked`: two short together pulses.
+- `success`: one longer together pulse.
+- `error`: three fast together pulses.
+
+### Three visible LEDs
+
+```powershell
+lumos config set leds num,caps,scroll
+lumos show active
+lumos show blocked
+lumos show success
+lumos show error
+lumos off
+```
+
+Expected: behavior matches the v0.3 three-LED default animations.
+
+## 5. Lease and suppression test
 
 ```powershell
 # Set a long-lived active lease.
@@ -113,7 +166,7 @@ Confirm:
 - `blocked`, `success`, and `error` can replay once after the keyboard becomes idle if they expired while you were typing.
 - `lumos off` clears both the visible state and any pending reminder.
 
-## 5. Direct LED poke test
+## 6. Direct LED poke test
 
 ```powershell
 # Toggle Caps Lock once, like a manual key press.
@@ -128,7 +181,7 @@ lumos poke scroll
 
 Confirm each available Lock LED toggles directly.
 
-## 6. Daemon test
+## 7. Daemon test
 
 ```powershell
 # Stop the background daemon.

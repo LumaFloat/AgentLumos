@@ -571,9 +571,9 @@ describe("createLumosDaemon", () => {
   });
 
   it.each([
-    ["blocked", "prompt-shift", 5_000],
-    ["success", "embrace-confirm", 3_000],
-    ["error", "alert-triple", 5_000],
+    ["blocked", "custom-blocked", 5_000],
+    ["success", "custom-success", 3_000],
+    ["error", "custom-error", 5_000],
   ] as const)("keeps the latest expired %s notification pending while suppressed", async (state, animationName, expectedMinimum) => {
     const clock = createControlledClock();
     const driver = createFakeKeyboardDriver(original);
@@ -619,7 +619,7 @@ describe("createLumosDaemon", () => {
       inputActivityMonitor: inputActivity.monitor,
     });
 
-    await daemon.setState("error", "alert-triple", animation, ["caps"], 1_000);
+    await daemon.setState("error", "custom-error", animation, ["caps"], 1_000);
     await inputActivity.triggerActivity();
     await clock.advance(1_001);
     await clock.advance(5 * 60 * 1000 + 1);

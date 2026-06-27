@@ -1,6 +1,6 @@
 {
   "name": "agentlumos",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Turn keyboard indicator LEDs into status lights for AI coding agents.",
   "license": "Apache-2.0",
   "bin": {
