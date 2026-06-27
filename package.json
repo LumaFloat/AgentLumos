@@ -3,11 +3,34 @@
   "version": "0.5.0",
   "description": "Turn keyboard indicator LEDs into status lights for AI coding agents.",
   "license": "Apache-2.0",
+  "author": "LumaFloat",
+  "keywords": [
+    "ai",
+    "agent",
+    "coding-agent",
+    "codex",
+    "claude-code",
+    "keyboard",
+    "led",
+    "status-indicator",
+    "cli",
+    "windows"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LumaFloat/AgentLumos.git"
+  },
+  "bugs": {
+    "url": "https://github.com/LumaFloat/AgentLumos/issues"
+  },
+  "homepage": "https://github.com/LumaFloat/AgentLumos#readme",
   "bin": {
-    "lumos": "./dist/src/cli/index.js"
+    "lumos": "./dist/cli/index.js"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "prebuild": "npm run clean",
+    "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit"

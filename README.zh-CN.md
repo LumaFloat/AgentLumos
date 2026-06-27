@@ -37,17 +37,10 @@ error    [●●●] [○○○] [●●●]   任务失败
 
 ## 安装
 
-克隆仓库并安装 CLI：
+从 npm 安装 CLI：
 
 ```powershell
-# 安装依赖。
-npm install
-
-# 构建 CLI。
-npm run build
-
-# 全局注册本地 lumos 命令。
-npm install -g .
+npm install -g agentlumos
 ```
 
 需要 Node.js 20 或更高版本。
@@ -129,7 +122,7 @@ lumos hook install claude-code
 lumos hook check
 ```
 
-如果检查结果提示缺少 `lumos` 命令，先确认已经执行过 `npm install -g .`，并重新打开 PowerShell。
+如果检查结果提示缺少 `lumos` 命令，先确认已经执行过 `npm install -g agentlumos`，并重新打开 PowerShell。
 
 ## Agent hooks
 

@@ -37,17 +37,10 @@ error    [●●●] [○○○] [●●●]   task failed
 
 ## Install
 
-Clone the repository and install the CLI:
+Install the CLI from npm:
 
 ```powershell
-# Install dependencies.
-npm install
-
-# Build the CLI.
-npm run build
-
-# Register the local lumos command globally.
-npm install -g .
+npm install -g agentlumos
 ```
 
 Requires Node.js 20 or newer.
@@ -129,7 +122,7 @@ After installing, run:
 lumos hook check
 ```
 
-If the check reports that the `lumos` command is missing, confirm that `npm install -g .` has run and reopen PowerShell.
+If the check reports that the `lumos` command is missing, confirm that `npm install -g agentlumos` has run and reopen PowerShell.
 
 ## Agent hooks
 
