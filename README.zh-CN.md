@@ -32,7 +32,7 @@ error    [●●●] [○○○] [●●●]   任务失败
 - **自动恢复状态**：执行动画前记录原始 Lock 状态，动画结束后恢复。
 - **操作时临时静音**：你开始打字或点击/拖拽鼠标时，LED 动画会暂时静音并恢复原始 Lock 状态；停止操作几秒后，如果 agent 状态仍有效，动画会继续。
 - **状态租约**：`working` 默认拥有 10 分钟租约，并会在新 hook 到来时续租；`blocked`、`success`、`error` 的默认 TTL 分别是 60 秒、10 秒和 20 秒，避免旧状态长时间残留。
-- **可配置**：可以配置 LED 顺序、状态 TTL、visual profile、动画和 hook 映射。
+- **可配置**：可以配置 LED 顺序、状态 TTL、visual profile 和动画。
 - **Windows 原生**：使用当前 Windows 键盘 Lock 行为。
 
 ## 安装
@@ -68,6 +68,7 @@ lumos show error -k critical
 lumos config set leds n,c,s
 
 # 根据你使用的 agent 安装对应 hook。
+lumos hook list
 lumos hook install codex
 lumos hook install claude-code
 
@@ -129,8 +130,12 @@ lumos hook check
 AgentLumos 可以为支持的 agent 工具安装托管 hook 处理器。
 
 ```powershell
+# 列出支持的 hook adapters。
+lumos hook list
+
 # 检查 AgentLumos hooks 是否就绪。
 lumos hook check
+lumos hook check codex
 
 # 安装 Codex hook handlers。
 lumos hook install codex
@@ -200,7 +205,6 @@ lumos config reset
 | `states` | 每个状态对应的 TTL。 |
 | `visualProfiles` | 每个状态或 state kind 与 LED layout 对应的动画与速度。 |
 | `animations` | 可复用的 LED 动画定义。 |
-| `hookIntegrations` | Agent hook 事件到 AgentLumos 状态的映射。 |
 
 `lumos status` 中的 `effectSuppressed` 表示当前逻辑状态仍然存在，但因为检测到键盘或鼠标按钮操作，LED 动画正在临时静音。`pendingReminder` 表示最新的有限期 `blocked`、`success` 或 `error` 状态在静音期间已经过期，正在等待输入空闲后重新显示。鼠标移动和滚轮暂不触发静音。
 

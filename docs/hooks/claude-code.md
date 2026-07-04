@@ -39,11 +39,14 @@ lumos hook uninstall claude-code
 ## Check Local Readiness
 
 ```powershell
+# List supported hook adapters.
+lumos hook list
+
 # Print the human-readable readiness report.
-lumos hook check
+lumos hook check claude-code
 
 # Print the same readiness report as JSON.
-lumos hook check --json
+lumos hook check claude-code --json
 ```
 
-The check command reports AgentLumos hook readiness in a human-readable format by default. Use `--json` for the same structured report in scripts. It does not install hooks.
+The check command reports AgentLumos hook readiness in a human-readable format by default. Without an agent argument, it checks all stable adapters. Use `--json` for the same structured report in scripts. It does not install hooks.

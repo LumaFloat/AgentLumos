@@ -21,8 +21,9 @@ Use `lumos help`, `lumos --help`, or `lumos -h` to print the available commands 
 | `lumos config get` | Print the current config. |
 | `lumos config set <key> <value>` | Update config. Currently supports `leds` and `defaultTtl`. |
 | `lumos config reset` | Reset the config so defaults are regenerated next time. |
-| `lumos hook get` | Print the current hook mapping config. |
+| `lumos hook list` | List registered first-party hook adapters. |
 | `lumos hook check` | Print a human-readable hook readiness report. |
+| `lumos hook check <agent>` | Check one hook adapter, such as `codex` or `claude-code`. |
 | `lumos hook check --json` | Print hook readiness as structured JSON. |
 | `lumos hook install codex` | Install AgentLumos-managed Codex hook handlers. |
 | `lumos hook install claude-code` | Install AgentLumos-managed Claude Code hook handlers. |
@@ -63,11 +64,13 @@ Use `lumos help`, `lumos --help`, or `lumos -h` to print the available commands 
 lumos config set leds n,c,s
 
 # Install only the hook for the agent you use.
+lumos hook list
 lumos hook install codex
 lumos hook install claude-code
 
 # Check whether hooks are ready.
 lumos hook check
+lumos hook check codex
 
 # Show status and config.
 lumos status

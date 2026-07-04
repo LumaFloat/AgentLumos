@@ -36,11 +36,14 @@ lumos hook uninstall codex
 ## 检查
 
 ```powershell
-# 输出面向人的就绪状态报告。
-lumos hook check
+# 列出支持的 hook adapters。
+lumos hook list
+
+# 输出 Codex 的就绪状态报告。
+lumos hook check codex
 
 # 以 JSON 输出同一份就绪状态报告。
-lumos hook check --json
+lumos hook check codex --json
 ```
 
-`check` 会显示是否已安装、缺少哪些事件，以及 Codex hook 文件是否可写。
+`check` 会显示是否已安装、缺少哪些事件，以及 Codex hook 文件是否可写。不带 agent 参数时会检查全部 stable adapters。

@@ -16,7 +16,6 @@ export type LumosStateKind =
 export type AnimationType = "sequence";
 export type AnimationName = string;
 export type AnimationSpeed = "slow" | "normal" | "fast" | "urgent";
-export type HookIntegrationName = "codex" | "claude-code";
 
 export type LockState = Record<LedName, boolean>;
 
@@ -56,15 +55,6 @@ export interface LumosStateSignal {
   kind?: LumosStateKind;
 }
 
-export type HookIntegrationMap = Record<string, LumosStateSignal>;
-
-export interface HookIntegrationConfig {
-  enabled: boolean;
-  hooks: HookIntegrationMap;
-}
-
-export type HookIntegrationConfigMap = Record<HookIntegrationName, HookIntegrationConfig>;
-
 export interface LumosStateOverride {
   leds?: LedName[];
 }
@@ -75,7 +65,6 @@ export interface LumosConfig {
   states: StateConfigMap;
   visualProfiles: VisualProfileMap;
   animations: AnimationConfigMap;
-  hookIntegrations: HookIntegrationConfigMap;
 }
 
 export interface RenderStep {

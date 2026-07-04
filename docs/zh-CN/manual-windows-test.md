@@ -169,8 +169,12 @@ lumos off
 ## 7. Hook 测试
 
 ```powershell
+# 列出支持的 hook adapters。
+lumos hook list
+
 # 检查 hook 接入状态。
 lumos hook check
+lumos hook check codex
 
 # 以 JSON 输出 hook 接入状态。
 lumos hook check --json
@@ -190,6 +194,7 @@ lumos hook uninstall claude-code
 
 重点观察：
 
+- `hook list` 是否显示 Codex 和 Claude Code adapters。
 - `hook check` 是否区分已安装和未安装的目标。
 - `hook install` 是否写入目标工具的 hook 配置。
 - `hook uninstall` 是否移除 AgentLumos 管理的 hook 配置。

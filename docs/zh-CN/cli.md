@@ -21,8 +21,9 @@
 | `lumos config get` | 查看当前配置。 |
 | `lumos config set <key> <value>` | 更新配置。目前支持 `leds` 和 `defaultTtl`。 |
 | `lumos config reset` | 重置配置，下次启动时重新生成默认配置。 |
-| `lumos hook get` | 查看当前 hook 映射配置。 |
+| `lumos hook list` | 列出已注册的一等 hook adapters。 |
 | `lumos hook check` | 输出面向人的 hook 就绪状态报告。 |
+| `lumos hook check <agent>` | 检查单个 hook adapter，例如 `codex` 或 `claude-code`。 |
 | `lumos hook check --json` | 以结构化 JSON 输出 hook 接入状态。 |
 | `lumos hook install codex` | 安装 AgentLumos 管理的 Codex hook handlers。 |
 | `lumos hook install claude-code` | 安装 AgentLumos 管理的 Claude Code hook handlers。 |
@@ -63,11 +64,13 @@
 lumos config set leds n,c,s
 
 # 只安装你使用的 agent hook。
+lumos hook list
 lumos hook install codex
 lumos hook install claude-code
 
 # 检查 hook 是否就绪。
 lumos hook check
+lumos hook check codex
 
 # 查看状态和配置。
 lumos status

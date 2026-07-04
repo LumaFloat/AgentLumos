@@ -77,20 +77,8 @@ describe("config defaults", () => {
         "embrace-confirm": { type: "sequence" },
         "alert-triple": { type: "sequence" },
       },
-      hookIntegrations: {
-        codex: {
-          enabled: false,
-          hooks: {
-            SessionStart: { state: "working", kind: "preparing" },
-            UserPromptSubmit: { state: "working", kind: "preparing" },
-            PreToolUse: { state: "working", kind: "tool" },
-            PostToolUse: { state: "working" },
-            PermissionRequest: { state: "blocked", kind: "permission" },
-            Stop: { state: "success", kind: "turn" },
-          },
-        },
-      },
     });
+    expect(defaultConfig).not.toHaveProperty("hookIntegrations");
   });
 });
 
@@ -319,7 +307,6 @@ describe("config updates", () => {
       states: defaultConfig.states,
       visualProfiles: defaultConfig.visualProfiles,
       animations: defaultConfig.animations,
-      hookIntegrations: defaultConfig.hookIntegrations,
       defaultTtl: "30m",
     });
     expect(applyConfigPatch(existing, { leds: ["caps", "num"] }).futureField).toBeUndefined();
@@ -383,30 +370,22 @@ describe("config updates", () => {
     expect(loadConfig(file)).toEqual(defaultConfig);
   });
 
-  it("merges hook integration patches", () => {
-    const existing = { ...defaultConfig };
-
-    expect(
-      applyConfigPatch(existing, {
-        hookIntegrations: {
-          codex: {
-            enabled: true,
-            hooks: {
-              Stop: "error",
-            },
-          },
-        } as never,
-      }),
-    ).toMatchObject({
+  it("drops removed hook integration fields when patching", () => {
+    const existing = {
+      ...defaultConfig,
       hookIntegrations: {
         codex: {
-          enabled: true,
+          enabled: false,
           hooks: {
-            SessionStart: { state: "working", kind: "preparing" },
-            Stop: { state: "error" },
+            Stop: { state: "success", kind: "turn" },
           },
         },
       },
-    });
+    } as never;
+
+    const updated = applyConfigPatch(existing, { defaultTtl: "1h" });
+
+    expect(updated).not.toHaveProperty("hookIntegrations");
+    expect(updated.defaultTtl).toBe("1h");
   });
 });

@@ -80,20 +80,6 @@ describe("shared types", () => {
           steps: [{ leds: ["all"], onMs: 120, offMs: 100 }],
         },
       },
-      hookIntegrations: {
-        codex: {
-          enabled: false,
-          hooks: {
-            SessionStart: { state: "working" },
-          },
-        },
-        "claude-code": {
-          enabled: false,
-          hooks: {
-            SessionEnd: { state: "idle" },
-          },
-        },
-      },
     };
 
     expect(config.states.success.ttl).toBe("10s");

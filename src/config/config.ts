@@ -1,18 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
 import { parseTtlOrZero } from "../core/duration";
-import { ACTIVE_LUMOS_STATES, STATE_KIND_OPTIONS, parseStateSignal } from "../state";
+import { ACTIVE_LUMOS_STATES, STATE_KIND_OPTIONS } from "../state";
 import type {
   ActiveLumosState,
   AnimationConfigMap,
   AnimationName,
   AnimationSpeed,
-  HookIntegrationConfig,
-  HookIntegrationConfigMap,
-  HookIntegrationName,
   LedName,
   LedSelector,
-  LumosStateSignal,
   LumosAnimationConfig,
   LumosConfig,
   LumosStateConfig,
@@ -31,7 +27,6 @@ export interface ResetConfigResult {
 }
 
 const ACTIVE_STATES = ACTIVE_LUMOS_STATES;
-const HOOK_INTEGRATIONS: HookIntegrationName[] = ["codex", "claude-code"];
 const ANIMATION_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 
 const BASE_VISUAL_PROFILES: Record<ActiveLumosState, VisualProfileConfig> = {
@@ -211,33 +206,6 @@ const DEFAULT_CONFIG: LumosConfig = {
       ],
     },
   },
-  hookIntegrations: {
-    codex: {
-      enabled: false,
-      hooks: {
-        SessionStart: { state: "working", kind: "preparing" },
-        UserPromptSubmit: { state: "working", kind: "preparing" },
-        PreToolUse: { state: "working", kind: "tool" },
-        PostToolUse: { state: "working" },
-        PermissionRequest: { state: "blocked", kind: "permission" },
-        Stop: { state: "success", kind: "turn" },
-      },
-    },
-    "claude-code": {
-      enabled: false,
-      hooks: {
-        SessionStart: { state: "working", kind: "preparing" },
-        UserPromptSubmit: { state: "working", kind: "preparing" },
-        PreToolUse: { state: "working", kind: "tool" },
-        PostToolUseFailure: { state: "error", kind: "tool" },
-        PermissionRequest: { state: "blocked", kind: "permission" },
-        Notification: { state: "blocked", kind: "input" },
-        Stop: { state: "success", kind: "turn" },
-        StopFailure: { state: "error", kind: "critical" },
-        SessionEnd: { state: "idle" },
-      },
-    },
-  },
 };
 
 export function getDefaultConfig(): LumosConfig {
@@ -301,9 +269,6 @@ export function applyConfigPatch(
       ? mergeVisualProfiles(existing.visualProfiles, patch.visualProfiles)
       : existing.visualProfiles,
     animations: patch.animations ? mergeAnimations(existing.animations, patch.animations) : existing.animations,
-    hookIntegrations: patch.hookIntegrations
-      ? mergeHookIntegrations(existing.hookIntegrations, patch.hookIntegrations)
-      : existing.hookIntegrations,
   } as ConfigDocument;
 
   return normalizeDocument(next);
@@ -330,7 +295,6 @@ function normalizeDocument(input: unknown): ConfigDocument {
   const animations = normalizeAnimations(document.animations);
   const states = normalizeStates(document.states);
   const visualProfiles = normalizeVisualProfiles(document.visualProfiles, animations);
-  const hookIntegrations = normalizeHookIntegrations(document.hookIntegrations);
 
   return {
     leds,
@@ -338,7 +302,6 @@ function normalizeDocument(input: unknown): ConfigDocument {
     states,
     visualProfiles,
     animations,
-    hookIntegrations,
   } as ConfigDocument;
 }
 
@@ -499,54 +462,6 @@ function normalizeAnimations(value: unknown): AnimationConfigMap {
   return normalized;
 }
 
-function normalizeHookIntegrations(value: unknown): HookIntegrationConfigMap {
-  if (value === undefined) {
-    return cloneHookIntegrations(DEFAULT_CONFIG.hookIntegrations);
-  }
-
-  if (!isPlainObject(value)) {
-    throw new Error("hookIntegrations must be a JSON object.");
-  }
-
-  const integrations = value as Record<string, unknown>;
-  return HOOK_INTEGRATIONS.reduce<HookIntegrationConfigMap>((normalized, name) => {
-    normalized[name] = normalizeHookIntegration(name, integrations[name]);
-    return normalized;
-  }, {} as HookIntegrationConfigMap);
-}
-
-function normalizeHookIntegration(name: HookIntegrationName, value: unknown): HookIntegrationConfig {
-  if (value === undefined) {
-    return cloneHookIntegration(DEFAULT_CONFIG.hookIntegrations[name]);
-  }
-
-  if (!isPlainObject(value)) {
-    throw new Error(`hookIntegrations.${name} must be a JSON object.`);
-  }
-
-  const integration = value as Record<string, unknown>;
-  return {
-    enabled: normalizeBoolean(integration.enabled, `hookIntegrations.${name}.enabled`),
-    hooks: normalizeHookMap(integration.hooks, `hookIntegrations.${name}.hooks`),
-  };
-}
-
-function normalizeHookMap(value: unknown, label: string): Record<string, LumosStateSignal> {
-  if (!isPlainObject(value)) {
-    throw new Error(`${label} must be a JSON object.`);
-  }
-
-  const hooks = value as Record<string, unknown>;
-  return Object.entries(hooks).reduce<Record<string, LumosStateSignal>>((normalized, [eventName, state]) => {
-    if (!eventName) {
-      throw new Error(`${label} contains an empty hook event name.`);
-    }
-
-    normalized[eventName] = parseStateSignal(state, `${label}.${eventName}`);
-    return normalized;
-  }, {});
-}
-
 function normalizeAnimation(value: unknown, name: AnimationName): LumosAnimationConfig {
   if (!isPlainObject(value)) {
     throw new Error(`Animation ${name} must be a JSON object.`);
@@ -618,14 +533,6 @@ function normalizeAnimationSpeed(value: unknown, label: string): AnimationSpeed 
   throw new Error(`${label} must be one of: slow, normal, fast, urgent.`);
 }
 
-function normalizeBoolean(value: unknown, label: string): boolean {
-  if (typeof value !== "boolean") {
-    throw new Error(`${label} must be a boolean.`);
-  }
-
-  return value;
-}
-
 function normalizePositiveInteger(value: unknown, label: string): number {
   if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
     throw new Error(`${label} must be a positive integer.`);
@@ -670,23 +577,6 @@ function mergeVisualProfiles(existing: VisualProfileMap, patch: Partial<VisualPr
   }, {} as VisualProfileMap);
 }
 
-function mergeHookIntegrations(
-  existing: HookIntegrationConfigMap,
-  patch: Partial<HookIntegrationConfigMap>,
-): HookIntegrationConfigMap {
-  return HOOK_INTEGRATIONS.reduce<HookIntegrationConfigMap>((integrations, name) => {
-    integrations[name] = {
-      ...existing[name],
-      ...patch[name],
-      hooks: {
-        ...existing[name].hooks,
-        ...patch[name]?.hooks,
-      },
-    };
-    return integrations;
-  }, {} as HookIntegrationConfigMap);
-}
-
 function writeDocument(filePath: string, document: ConfigDocument): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, `${JSON.stringify(document, null, 2)}\n`, "utf8");
@@ -699,7 +589,6 @@ function cloneConfig(config: LumosConfig): LumosConfig {
     states: cloneStates(config.states),
     visualProfiles: cloneVisualProfiles(config.visualProfiles),
     animations: cloneAnimations(config.animations),
-    hookIntegrations: cloneHookIntegrations(config.hookIntegrations),
   };
 }
 
@@ -710,7 +599,6 @@ function cloneDocument(config: LumosConfig): ConfigDocument {
     states: cloneStates(config.states),
     visualProfiles: cloneVisualProfiles(config.visualProfiles),
     animations: cloneAnimations(config.animations),
-    hookIntegrations: cloneHookIntegrations(config.hookIntegrations),
   };
 }
 
@@ -756,22 +644,6 @@ function cloneAnimations(animations: AnimationConfigMap): AnimationConfigMap {
   }
 
   return cloned;
-}
-
-function cloneHookIntegrations(integrations: HookIntegrationConfigMap): HookIntegrationConfigMap {
-  return HOOK_INTEGRATIONS.reduce<HookIntegrationConfigMap>((cloned, name) => {
-    cloned[name] = cloneHookIntegration(integrations[name]);
-    return cloned;
-  }, {} as HookIntegrationConfigMap);
-}
-
-function cloneHookIntegration(integration: HookIntegrationConfig): HookIntegrationConfig {
-  return {
-    enabled: integration.enabled,
-    hooks: Object.fromEntries(
-      Object.entries(integration.hooks).map(([eventName, signal]) => [eventName, { ...signal }]),
-    ),
-  };
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

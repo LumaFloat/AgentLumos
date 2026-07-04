@@ -3,7 +3,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { runCli } from "../../src/cli/index";
-import { getDefaultConfig } from "../../src/config/config";
 import type { DaemonResponse } from "../../src/types";
 
 function createClientFactory(responses: DaemonResponse[]) {
@@ -149,6 +148,8 @@ describe("runCli", () => {
     [["daemon", "stop", "extra"], "too many arguments"],
     [["config", "get", "extra"], "too many arguments"],
     [["hook", "install", "codex", "extra"], "too many arguments"],
+    [["hook", "check", "gemini"], "Invalid hook adapter: gemini"],
+    [["hook", "install", "gemini"], "Invalid hook adapter: gemini"],
   ])("rejects invalid arguments for %j", async (argv, expectedMessage) => {
     const stderr: string[] = [];
 
@@ -594,40 +595,37 @@ describe("runCli", () => {
     expect(stderr.join("")).toContain("unknown command");
   });
 
-  it("prints hook integration config", async () => {
-    const stdout: string[] = [];
-    const clientFactory = createClientFactory([
-      {
-        ok: true,
-        data: {
-          hookIntegrations: {
-            codex: {
-              enabled: false,
-              hooks: {
-                Stop: "success",
-              },
-            },
-            "claude-code": {
-              enabled: false,
-              hooks: {
-                SessionEnd: "idle",
-              },
-            },
-          },
-        },
-      },
-    ]);
+  it("does not expose the old hook get command", async () => {
+    const stderr: string[] = [];
     const exitCode = await runCli(["hook", "get"], {
-      platform: "win32",
-      createClient: clientFactory.createClient,
+      createClient: () => {
+        throw new Error("should not connect");
+      },
+      spawnDaemon: async () => {},
+      stdout: { write: async () => true },
+      stderr: { write: async (chunk: string) => { stderr.push(chunk); } },
+    });
+
+    expect(exitCode).toBe(2);
+    expect(stderr.join("")).toContain("unknown command");
+  });
+
+  it("lists registered hook adapters", async () => {
+    const stdout: string[] = [];
+    const exitCode = await runCli(["hook", "list"], {
+      createClient: () => {
+        throw new Error("should not connect");
+      },
       spawnDaemon: async () => {},
       stdout: { write: async (chunk: string) => { stdout.push(chunk); } },
       stderr: { write: async () => true },
     });
 
     expect(exitCode).toBe(0);
-    expect(clientFactory.requests).toEqual([{ type: "getConfig" }]);
-    expect(stdout.join("")).toContain('"codex"');
+    expect(stdout.join("")).toContain("AgentLumos Hook Adapters");
+    expect(stdout.join("")).toContain("codex");
+    expect(stdout.join("")).toContain("claude-code");
+    expect(stdout.join("")).not.toContain("gemini");
   });
 
   it("installs native hook snippets", async () => {
@@ -636,29 +634,11 @@ describe("runCli", () => {
     const originalPath = process.env.AGENTLUMOS_CODEX_HOOKS_PATH;
     process.env.AGENTLUMOS_CODEX_HOOKS_PATH = hooksPath;
     const stdout: string[] = [];
-    const clientFactory = createClientFactory([
-      {
-        ok: true,
-        data: {
-          hookIntegrations: {
-            codex: {
-              enabled: false,
-              hooks: {
-                SessionStart: { state: "working", kind: "preparing" },
-                PermissionRequest: { state: "blocked", kind: "permission" },
-              },
-            },
-            "claude-code": {
-              enabled: false,
-              hooks: {},
-            },
-          },
-        },
-      },
-    ]);
     const exitCode = await runCli(["hook", "install", "codex"], {
         platform: "win32",
-        createClient: clientFactory.createClient,
+        createClient: () => {
+          throw new Error("should not connect");
+        },
         spawnDaemon: async () => {},
         stdout: { write: async (chunk: string) => { stdout.push(chunk); } },
         stderr: { write: async () => true },
@@ -666,8 +646,7 @@ describe("runCli", () => {
     process.env.AGENTLUMOS_CODEX_HOOKS_PATH = originalPath;
 
     expect(exitCode).toBe(0);
-    expect(clientFactory.requests).toEqual([{ type: "getConfig" }]);
-    expect(stdout.join("")).toContain('"installed": 2');
+    expect(stdout.join("")).toContain('"installed": 6');
     expect(stdout.join("")).toContain('"codex"');
     expect(fs.readFileSync(hooksPath, "utf8")).toContain("AgentLumos: working.preparing");
     expect(fs.readFileSync(hooksPath, "utf8")).toContain("AgentLumos: blocked.permission");
@@ -730,28 +709,23 @@ describe("runCli", () => {
     for (const command of ["lumos", "codex", "claude"]) {
       fs.writeFileSync(path.join(dir, `${command}.cmd`), "", "utf8");
     }
-    const config = getDefaultConfig();
-    const codexHooks = Object.fromEntries(
-      Object.entries(config.hookIntegrations.codex.hooks).map(([eventName, signal]) => {
-        const formatted = signal.kind ? `${signal.state}.${signal.kind}` : signal.state;
-        const command = signal.state === "idle" ? "lumos off" : `lumos set ${signal.state}${signal.kind ? ` -k ${signal.kind}` : ""}`;
-        return [
-          eventName,
-          [{ hooks: [{ type: "command", command, statusMessage: `AgentLumos: ${formatted}` }] }],
-        ];
-      }),
-    );
     fs.writeFileSync(
       hooksPath,
       JSON.stringify({
-        hooks: codexHooks,
+        hooks: {
+          SessionStart: [{ hooks: [{ type: "command", command: "lumos set working -k preparing", statusMessage: "AgentLumos: working.preparing" }] }],
+          UserPromptSubmit: [{ hooks: [{ type: "command", command: "lumos set working -k preparing", statusMessage: "AgentLumos: working.preparing" }] }],
+          PreToolUse: [{ hooks: [{ type: "command", command: "lumos set working -k tool", statusMessage: "AgentLumos: working.tool" }] }],
+          PostToolUse: [{ hooks: [{ type: "command", command: "lumos set working", statusMessage: "AgentLumos: working" }] }],
+          PermissionRequest: [{ hooks: [{ type: "command", command: "lumos set blocked -k permission", statusMessage: "AgentLumos: blocked.permission" }] }],
+          Stop: [{ hooks: [{ type: "command", command: "lumos set success -k turn", statusMessage: "AgentLumos: success.turn" }] }],
+        },
       }),
       "utf8",
     );
     const stdout: string[] = [];
     const clientFactory = createClientFactory([
       { ok: true, data: { daemon: "running" } },
-      { ok: true, data: config },
     ]);
     const exitCode = await runCli(["hook", "check"], {
       platform: "win32",
@@ -765,7 +739,7 @@ describe("runCli", () => {
     process.env.PATHEXT = originalPathExt;
 
     expect(exitCode).toBe(0);
-    expect(clientFactory.requests).toEqual([{ type: "getStatus" }, { type: "getConfig" }]);
+    expect(clientFactory.requests).toEqual([{ type: "getStatus" }]);
     expect(stdout.join("")).toContain("AgentLumos Hook Check");
     expect(stdout.join("")).toContain("Codex");
     expect(stdout.join("")).toContain("Hooks: installed");
@@ -787,7 +761,6 @@ describe("runCli", () => {
     const stdout: string[] = [];
     const clientFactory = createClientFactory([
       { ok: true, data: { daemon: "running" } },
-      { ok: true, data: getDefaultConfig() },
     ]);
 
     const exitCode = await runCli(["hook", "check", "--json"], {
@@ -809,6 +782,37 @@ describe("runCli", () => {
     expect(output.targets.codex.missingEvents).toContain("SessionStart");
     expect(output.sections).toBeUndefined();
     expect(output.targets.codex.enabled).toBeUndefined();
+  });
+
+  it("checks one hook adapter when an agent is provided", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agentlumos-hooks-"));
+    const hooksPath = path.join(dir, "hooks.json");
+    const originalPath = process.env.AGENTLUMOS_CODEX_HOOKS_PATH;
+    const originalPathEnv = process.env.PATH;
+    const originalPathExt = process.env.PATHEXT;
+    process.env.AGENTLUMOS_CODEX_HOOKS_PATH = hooksPath;
+    process.env.PATHEXT = ".CMD;.EXE";
+    process.env.PATH = `${dir}${path.delimiter}${originalPathEnv ?? ""}`;
+    for (const command of ["lumos", "codex"]) {
+      fs.writeFileSync(path.join(dir, `${command}.cmd`), "", "utf8");
+    }
+
+    const stdout: string[] = [];
+    const clientFactory = createClientFactory([{ ok: true, data: { daemon: "running" } }]);
+    const exitCode = await runCli(["hook", "check", "codex"], {
+      platform: "win32",
+      createClient: clientFactory.createClient,
+      spawnDaemon: async () => {},
+      stdout: { write: async (chunk: string) => { stdout.push(chunk); } },
+      stderr: { write: async () => true },
+    });
+    process.env.AGENTLUMOS_CODEX_HOOKS_PATH = originalPath;
+    process.env.PATH = originalPathEnv;
+    process.env.PATHEXT = originalPathExt;
+
+    expect(exitCode).toBe(0);
+    expect(stdout.join("")).toContain("Codex");
+    expect(stdout.join("")).not.toContain("Claude Code");
   });
 
   it("spawns the daemon and retries after an ipc failure", async () => {

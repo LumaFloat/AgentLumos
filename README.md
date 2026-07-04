@@ -32,7 +32,7 @@ error    [●●●] [○○○] [●●●]   task failed
 - **Restores state**: captures the original Lock state and restores it after animations.
 - **Quiet while interacting**: temporarily suppresses LED animations while you type or click/drag the mouse, restores the original Lock state, and resumes after a short idle window if the agent state is still working.
 - **State leases**: `working` now defaults to a 10 minute lease and renews on new hooks; `blocked`, `success`, and `error` default to 60 seconds, 10 seconds, and 20 seconds so stale states do not linger.
-- **Configurable**: choose LED order, state TTLs, visual profiles, animations, and hook mappings.
+- **Configurable**: choose LED order, state TTLs, visual profiles, and animations.
 - **Windows native**: uses the current Windows keyboard Lock behavior.
 
 ## Install
@@ -68,6 +68,7 @@ lumos show error -k critical
 lumos config set leds n,c,s
 
 # Install the hook for the agent you use.
+lumos hook list
 lumos hook install codex
 lumos hook install claude-code
 
@@ -129,8 +130,12 @@ If the check reports that the `lumos` command is missing, confirm that `npm inst
 AgentLumos can install managed hook handlers for supported agent tools.
 
 ```powershell
+# List supported hook adapters.
+lumos hook list
+
 # Check whether AgentLumos hooks are ready.
 lumos hook check
+lumos hook check codex
 
 # Install Codex hook handlers.
 lumos hook install codex
@@ -200,7 +205,6 @@ Important fields:
 | `states` | TTL for each state. |
 | `visualProfiles` | Animation and speed for each state or state kind and LED layout. |
 | `animations` | Reusable LED animation definitions. |
-| `hookIntegrations` | Agent hook event to AgentLumos state mappings. |
 
 In `lumos status`, `effectSuppressed` means the logical state is still working, but LED animation is temporarily quiet because keyboard or mouse-button activity was detected. `pendingReminder` means the latest finite `blocked`, `success`, or `error` state expired while quiet and is waiting to replay once input becomes idle. Mouse movement and wheel scrolling are not used for suppression.
 

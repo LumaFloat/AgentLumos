@@ -196,11 +196,12 @@ Confirm the daemon stops and comes back cleanly.
 ## 7. Hook test
 
 ```powershell
-# Print hook integration config.
-lumos hook get
+# List supported hook adapters.
+lumos hook list
 
 # Check hook readiness.
 lumos hook check
+lumos hook check codex
 
 # Install Codex hook handlers.
 lumos hook install codex
@@ -217,7 +218,7 @@ lumos hook uninstall claude-code
 
 Confirm:
 
-- `hook get` prints the hook integration config.
+- `hook list` shows Codex and Claude Code adapters.
 - `hook check` reports command availability and daemon status.
 - `hook install` reports installed handlers and the target config path.
 - `hook uninstall` reports removed handlers.

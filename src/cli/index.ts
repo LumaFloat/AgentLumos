@@ -1,24 +1,22 @@
 #!/usr/bin/env node
-import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { Command, CommanderError } from "commander";
 import { parseTtlOrZero } from "../core/duration";
 import { createNamedPipeClient } from "../daemon/named-pipe-client";
 import { getDaemonPipePath } from "../daemon/pipe-path";
-import { ACTIVE_LUMOS_STATES, assertValidStateKind, formatStateSignal, isActiveLumosState, parseStateSignal } from "../state";
+import { ACTIVE_LUMOS_STATES, assertValidStateKind, isActiveLumosState, parseStateSignal } from "../state";
+import { getHookCheckReport } from "../integrations/check";
+import { installJsonHooks, uninstallJsonHooks } from "../integrations/json-hooks";
+import { getAdapter, listAdapters, listStableAdapters } from "../integrations/registry";
 import type {
   DaemonRequest,
   DaemonResponse,
-  HookIntegrationConfig,
-  HookIntegrationName,
   LedName,
-  LumosConfig,
   LumosState,
   LumosStateKind,
   LumosStateOverride,
-  LumosStateSignal,
 } from "../types";
+import type { AgentAdapter, HookCheckReport } from "../integrations/types";
 import { formatJson, formatWarning } from "./format";
 
 const DAEMON_START_RETRY_COUNT = 20;
@@ -64,9 +62,10 @@ type CliOperation =
       retryOnConnectFailure?: boolean;
       afterResponse?: (response: DaemonResponse) => string | null;
     }
-  | { kind: "hook-check"; json?: boolean }
-  | { kind: "hook-install"; hookTarget: HookIntegrationName }
-  | { kind: "hook-uninstall"; hookTarget: HookIntegrationName }
+  | { kind: "hook-list" }
+  | { kind: "hook-check"; adapter?: AgentAdapter; json?: boolean }
+  | { kind: "hook-install"; adapter: AgentAdapter }
+  | { kind: "hook-uninstall"; adapter: AgentAdapter }
   | { kind: "daemon-restart" };
 
 interface StateCommandOptions {
@@ -94,35 +93,6 @@ interface HookCheckOptions {
 interface SetDaemonRequestOptions {
   retryOnConnectFailure?: boolean;
   afterResponse?: (response: DaemonResponse) => string | null;
-}
-
-interface HookTargetCheck {
-  toolInstalled: boolean;
-  path?: string;
-  pathExists?: boolean;
-  pathWritable?: boolean | null;
-  hookInstalled: boolean;
-  hookCheckSkipped: boolean;
-  skipReason?: string;
-  expectedEvents: Record<string, string>;
-  installedEvents: Record<string, string[]>;
-  missingEvents: string[];
-  extraEvents: string[];
-  mismatchedEvents: Array<{ event: string; expected: string; actual: string[] }>;
-  managedHandlers: number;
-  error?: string;
-}
-
-interface HookCheckReport {
-  agentLumosHooksReady: boolean;
-  agentLumos: {
-    daemonReady: boolean;
-    commandInstalled: boolean;
-    configLoaded: boolean;
-  };
-  targets: Record<HookIntegrationName, HookTargetCheck>;
-  issues: string[];
-  nextSteps: string[];
 }
 
 interface HookCheckView {
@@ -277,12 +247,13 @@ function parseLedName(value: string): LedName {
   return led;
 }
 
-function parseHookIntegrationName(value: string): HookIntegrationName {
-  if (value === "codex" || value === "claude-code") {
-    return value;
+function parseHookAdapter(value: string): AgentAdapter {
+  const adapter = getAdapter(value);
+  if (adapter) {
+    return adapter;
   }
 
-  throw new CliUsageError(`Invalid hook target: ${value}`);
+  throw new CliUsageError(`Invalid hook adapter: ${value}`);
 }
 
 function parseActiveState(value: string): Exclude<LumosState, "idle"> {
@@ -455,32 +426,29 @@ function createProgram(setOperation: (operation: CliOperation) => void, deps: Cl
 
   const hook = program.command("hook").description("Manage agent hook integrations.");
   hook
-    .command("get")
+    .command("list")
     .allowExcessArguments(false)
     .action(() => {
-      setDaemonRequest(setOperation, { type: "getConfig" }, {
-        retryOnConnectFailure: true,
-        afterResponse: (response) => formatJson(((response as Extract<DaemonResponse, { ok: true }>).data as LumosConfig).hookIntegrations),
-      });
+      setOperation({ kind: "hook-list" });
     });
   hook
-    .command("check")
+    .command("check [agent]")
     .allowExcessArguments(false)
     .option("--json", "print JSON report")
-    .action((options: HookCheckOptions) => {
-      setOperation({ kind: "hook-check", json: options.json });
+    .action((agent: string | undefined, options: HookCheckOptions) => {
+      setOperation({ kind: "hook-check", adapter: agent ? parseHookAdapter(agent) : undefined, json: options.json });
     });
   hook
     .command("install <target>")
     .allowExcessArguments(false)
     .action((target: string) => {
-      setOperation({ kind: "hook-install", hookTarget: parseHookIntegrationName(target) });
+      setOperation({ kind: "hook-install", adapter: parseHookAdapter(target) });
     });
   hook
     .command("uninstall <target>")
     .allowExcessArguments(false)
     .action((target: string) => {
-      setOperation({ kind: "hook-uninstall", hookTarget: parseHookIntegrationName(target) });
+      setOperation({ kind: "hook-uninstall", adapter: parseHookAdapter(target) });
     });
 
   return program;
@@ -520,401 +488,6 @@ async function parseOperation(argv: string[], deps: CliDeps): Promise<CliOperati
   return operationHolder.operation;
 }
 
-function buildNativeHookSnippet(target: HookIntegrationName, integration: HookIntegrationConfig): { hooks: NativeHookConfig } {
-  const hooks = Object.entries(integration.hooks).reduce<Record<string, Array<{ hooks: Array<Record<string, unknown>> }>>>(
-    (snippet, [eventName, signal]) => {
-      snippet[eventName] = [
-        {
-          hooks: [
-            buildAgentLumosHookHandler(signal),
-          ],
-        },
-      ];
-      return snippet;
-    },
-    {},
-  );
-
-  return { hooks };
-}
-
-type NativeHookHandler = Record<string, unknown>;
-type NativeHookGroup = { matcher?: string; hooks?: NativeHookHandler[] } & Record<string, unknown>;
-type NativeHookConfig = Record<string, NativeHookGroup[]>;
-type NativeHookDocument = { hooks?: NativeHookConfig } & Record<string, unknown>;
-
-function buildAgentLumosHookHandler(signal: LumosStateSignal): NativeHookHandler {
-  const formatted = formatStateSignal(signal);
-  return {
-    type: "command",
-    command: lumosCommandForState(signal),
-    commandWindows: lumosCommandForState(signal),
-    timeout: 10,
-    statusMessage: `AgentLumos: ${formatted}`,
-  };
-}
-
-function isAgentLumosHookHandler(handler: NativeHookHandler): boolean {
-  return typeof handler.statusMessage === "string" && handler.statusMessage.startsWith("AgentLumos:");
-}
-
-function getHookConfigPath(target: HookIntegrationName): string {
-  const codexOverride = process.env.AGENTLUMOS_CODEX_HOOKS_PATH;
-  const claudeOverride = process.env.AGENTLUMOS_CLAUDE_CODE_SETTINGS_PATH;
-  if (target === "codex" && codexOverride) {
-    return codexOverride;
-  }
-  if (target === "claude-code" && claudeOverride) {
-    return claudeOverride;
-  }
-
-  const home = os.homedir();
-  if (target === "codex") {
-    return path.join(home, ".codex", "hooks.json");
-  }
-
-  return path.join(home, ".claude", "settings.json");
-}
-
-function readJsonDocument(filePath: string): NativeHookDocument {
-  if (!fs.existsSync(filePath)) {
-    return {};
-  }
-
-  const contents = fs.readFileSync(filePath, "utf8").replace(/^\uFEFF/, "");
-  return JSON.parse(contents) as NativeHookDocument;
-}
-
-function writeJsonDocument(filePath: string, document: NativeHookDocument): void {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, `${JSON.stringify(document, null, 2)}\n`, "utf8");
-}
-
-function removeAgentLumosHooks(document: NativeHookDocument): { document: NativeHookDocument; removed: number } {
-  let removed = 0;
-  const existingHooks = document.hooks ?? {};
-  const nextHooks: NativeHookConfig = {};
-
-  for (const [eventName, groups] of Object.entries(existingHooks)) {
-    const nextGroups: NativeHookGroup[] = [];
-    for (const group of groups) {
-      const handlers = Array.isArray(group.hooks) ? group.hooks : [];
-      const filteredHandlers = handlers.filter((handler) => {
-        const shouldRemove = isAgentLumosHookHandler(handler);
-        if (shouldRemove) {
-          removed += 1;
-        }
-        return !shouldRemove;
-      });
-
-      if (filteredHandlers.length > 0) {
-        nextGroups.push({
-          ...group,
-          hooks: filteredHandlers,
-        });
-      }
-    }
-
-    if (nextGroups.length > 0) {
-      nextHooks[eventName] = nextGroups;
-    }
-  }
-
-  return {
-    document: {
-      ...document,
-      hooks: nextHooks,
-    },
-    removed,
-  };
-}
-
-function installAgentLumosHooks(target: HookIntegrationName, integration: HookIntegrationConfig): unknown {
-  const filePath = getHookConfigPath(target);
-  const current = readJsonDocument(filePath);
-  const cleaned = removeAgentLumosHooks(current).document;
-  const snippet = buildNativeHookSnippet(target, integration);
-  const hooks: NativeHookConfig = { ...(cleaned.hooks ?? {}) };
-  let installed = 0;
-
-  for (const [eventName, groups] of Object.entries(snippet.hooks)) {
-    hooks[eventName] = [...(hooks[eventName] ?? []), ...groups];
-    installed += groups.reduce((count, group) => count + (group.hooks?.length ?? 0), 0);
-  }
-
-  writeJsonDocument(filePath, {
-    ...cleaned,
-    hooks,
-  });
-
-  return {
-    target,
-    installed,
-    path: filePath,
-  };
-}
-
-function uninstallAgentLumosHooks(target: HookIntegrationName): unknown {
-  const filePath = getHookConfigPath(target);
-  const current = readJsonDocument(filePath);
-  const { document, removed } = removeAgentLumosHooks(current);
-  writeJsonDocument(filePath, document);
-
-  return {
-    target,
-    removed,
-    path: filePath,
-  };
-}
-
-function getAgentLumosHookSignal(handler: NativeHookHandler): string | null {
-  if (!isAgentLumosHookHandler(handler)) {
-    return null;
-  }
-
-  const rawSignal = (handler.statusMessage as string).slice("AgentLumos:".length).trim();
-  try {
-    return formatStateSignal(parseStateSignal(rawSignal, "AgentLumos hook status"));
-  } catch {
-    return null;
-  }
-}
-
-function getInstalledAgentLumosEvents(document: NativeHookDocument): {
-  managedHandlers: number;
-  installedEvents: Record<string, string[]>;
-} {
-  let count = 0;
-  const installedEvents: Record<string, string[]> = {};
-
-  for (const [eventName, groups] of Object.entries(document.hooks ?? {})) {
-    for (const group of groups) {
-      const handlers = Array.isArray(group.hooks) ? group.hooks : [];
-      for (const handler of handlers) {
-        const signal = getAgentLumosHookSignal(handler);
-        if (signal) {
-          count += 1;
-          installedEvents[eventName] = [...(installedEvents[eventName] ?? []), signal];
-        }
-      }
-    }
-  }
-
-  return { managedHandlers: count, installedEvents };
-}
-
-function lumosCommandForState(signal: LumosStateSignal): string {
-  if (signal.state === "idle") {
-    return "lumos off";
-  }
-
-  return signal.kind ? `lumos set ${signal.state} -k ${signal.kind}` : `lumos set ${signal.state}`;
-}
-
-function commandExists(command: string): boolean {
-  const pathValue = process.env.PATH ?? "";
-  const pathExt = process.platform === "win32" ? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM") : "";
-  const extensions = process.platform === "win32" ? pathExt.split(";").filter(Boolean) : [""];
-
-  for (const directory of pathValue.split(path.delimiter)) {
-    if (!directory) {
-      continue;
-    }
-
-    for (const extension of extensions) {
-      const candidate = path.join(directory, process.platform === "win32" ? `${command}${extension.toLowerCase()}` : command);
-      const candidateUpper = path.join(directory, process.platform === "win32" ? `${command}${extension.toUpperCase()}` : command);
-      if (fs.existsSync(candidate) || fs.existsSync(candidateUpper)) {
-        return true;
-      }
-    }
-  }
-
-  return false;
-}
-
-function canWriteExistingPath(filePath: string): boolean | null {
-  const target = fs.existsSync(filePath) ? filePath : path.dirname(filePath);
-  if (!fs.existsSync(target)) {
-    return null;
-  }
-
-  try {
-    fs.accessSync(target, fs.constants.W_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function getTargetCommand(target: HookIntegrationName): string {
-  return target === "codex" ? "codex" : "claude";
-}
-
-function getHookTargetCheck(target: HookIntegrationName, config: LumosConfig | null): HookTargetCheck {
-  const toolInstalled = commandExists(getTargetCommand(target));
-  const expectedEvents = Object.fromEntries(
-    Object.entries(config?.hookIntegrations[target].hooks ?? {}).map(([eventName, signal]) => [
-      eventName,
-      formatStateSignal(signal),
-    ]),
-  );
-
-  if (!toolInstalled) {
-    return {
-      toolInstalled,
-      hookInstalled: false,
-      hookCheckSkipped: true,
-      skipReason: `${getTargetCommand(target)} command not found`,
-      expectedEvents,
-      installedEvents: {},
-      missingEvents: [],
-      extraEvents: [],
-      mismatchedEvents: [],
-      managedHandlers: 0,
-    };
-  }
-
-  if (!config) {
-    return {
-      toolInstalled,
-      hookInstalled: false,
-      hookCheckSkipped: true,
-      skipReason: "AgentLumos config unavailable",
-      expectedEvents,
-      installedEvents: {},
-      missingEvents: [],
-      extraEvents: [],
-      mismatchedEvents: [],
-      managedHandlers: 0,
-    };
-  }
-
-  const filePath = getHookConfigPath(target);
-  const exists = fs.existsSync(filePath);
-  const writable = canWriteExistingPath(filePath);
-
-  if (!exists) {
-    const missingEvents = Object.keys(expectedEvents);
-    return {
-      toolInstalled,
-      path: filePath,
-      pathExists: exists,
-      pathWritable: writable,
-      hookInstalled: false,
-      hookCheckSkipped: false,
-      expectedEvents,
-      installedEvents: {},
-      missingEvents,
-      extraEvents: [],
-      mismatchedEvents: [],
-      managedHandlers: 0,
-    };
-  }
-
-  try {
-    const { managedHandlers, installedEvents } = getInstalledAgentLumosEvents(readJsonDocument(filePath));
-    const missingEvents = Object.entries(expectedEvents)
-      .filter(([event, signal]) => !(installedEvents[event] ?? []).includes(signal))
-      .map(([event]) => event);
-    const extraEvents = Object.keys(installedEvents).filter((event) => !(event in expectedEvents));
-    const mismatchedEvents = Object.entries(expectedEvents)
-      .filter(([event, signal]) => installedEvents[event] && !installedEvents[event].includes(signal))
-      .map(([event, signal]) => ({ event, expected: signal, actual: installedEvents[event] }));
-
-    return {
-      toolInstalled,
-      path: filePath,
-      pathExists: exists,
-      pathWritable: writable,
-      hookInstalled: missingEvents.length === 0 && extraEvents.length === 0 && mismatchedEvents.length === 0,
-      hookCheckSkipped: false,
-      expectedEvents,
-      installedEvents,
-      missingEvents,
-      extraEvents,
-      mismatchedEvents,
-      managedHandlers,
-    };
-  } catch (error) {
-    return {
-      toolInstalled,
-      path: filePath,
-      pathExists: exists,
-      pathWritable: writable,
-      hookInstalled: false,
-      hookCheckSkipped: false,
-      expectedEvents,
-      installedEvents: {},
-      missingEvents: Object.keys(expectedEvents),
-      extraEvents: [],
-      mismatchedEvents: [],
-      managedHandlers: 0,
-      error: toErrorMessage(error),
-    };
-  }
-}
-
-function getHookCheckReport(daemonAvailable: boolean, config: LumosConfig | null): HookCheckReport {
-  const agentLumos = {
-    daemonReady: daemonAvailable,
-    commandInstalled: commandExists("lumos"),
-    configLoaded: config !== null,
-  };
-  const targets = {
-    codex: getHookTargetCheck("codex", config),
-    "claude-code": getHookTargetCheck("claude-code", config),
-  };
-  const issues: string[] = [];
-  const nextSteps: string[] = [];
-
-  if (!agentLumos.commandInstalled) {
-    issues.push("lumos command not found in PATH.");
-  }
-  if (!daemonAvailable) {
-    issues.push("AgentLumos daemon is not available.");
-    nextSteps.push("Run lumos daemon restart.");
-  }
-  if (!config) {
-    issues.push("AgentLumos hook configuration is not available.");
-  }
-
-  for (const [target, targetCheck] of Object.entries(targets)) {
-    if (!targetCheck.toolInstalled) {
-      issues.push(`${target} tool is not available.`);
-      nextSteps.push(`Install ${getTargetCommand(target as HookIntegrationName)} before installing AgentLumos hooks.`);
-      continue;
-    }
-    if (targetCheck.hookCheckSkipped) {
-      continue;
-    }
-    if (targetCheck.error) {
-      issues.push(`${target} hook config is not valid JSON: ${targetCheck.error}`);
-      continue;
-    }
-    if (targetCheck.pathWritable === false) {
-      issues.push(`${target} hook config path is not writable.`);
-    }
-    if (!targetCheck.hookInstalled) {
-      if (targetCheck.missingEvents.length > 0) {
-        issues.push(`${target} is missing AgentLumos hooks: ${targetCheck.missingEvents.join(", ")}.`);
-      }
-      if (targetCheck.extraEvents.length > 0) {
-        issues.push(`${target} has extra AgentLumos hooks: ${targetCheck.extraEvents.join(", ")}.`);
-      }
-      nextSteps.push(`Run lumos hook install ${target}.`);
-    }
-  }
-
-  return {
-    agentLumosHooksReady: issues.length === 0,
-    agentLumos,
-    targets,
-    issues,
-    nextSteps,
-  };
-}
-
 function formatAvailability(value: boolean): string {
   return value ? "found" : "not found";
 }
@@ -923,12 +496,28 @@ function formatReady(value: boolean): string {
   return value ? "ready" : "not ready";
 }
 
-function getTargetTitle(target: HookIntegrationName): string {
-  return target === "codex" ? "Codex" : "Claude Code";
-}
-
 function formatTargetEvents(events: Record<string, string[]>): string {
   return Object.keys(events).join(", ");
+}
+
+function formatInstallStrategy(adapter: AgentAdapter): string {
+  return adapter.installStrategy.type;
+}
+
+function formatHookListText(adapters: AgentAdapter[]): string {
+  const lines = ["AgentLumos Hook Adapters"];
+  for (const adapter of adapters) {
+    lines.push(
+      "",
+      adapter.displayName,
+      `  ID: ${adapter.id}`,
+      `  Support: ${adapter.supportLevel}`,
+      `  Install: ${formatInstallStrategy(adapter)}`,
+      `  Commands: ${adapter.commandNames.join(", ")}`,
+    );
+  }
+
+  return `${lines.join("\n")}\n`;
 }
 
 function buildHookCheckView(report: HookCheckReport): HookCheckView {
@@ -938,12 +527,11 @@ function buildHookCheckView(report: HookCheckReport): HookCheckView {
       rows: [
         { label: "Daemon", value: formatReady(report.agentLumos.daemonReady) },
         { label: "Command", value: `lumos ${formatAvailability(report.agentLumos.commandInstalled)}` },
-        { label: "Config", value: report.agentLumos.configLoaded ? "available" : "unavailable" },
       ],
     },
   ];
 
-  for (const [target, targetCheck] of Object.entries(report.targets) as Array<[HookIntegrationName, HookTargetCheck]>) {
+  for (const targetCheck of Object.values(report.targets)) {
     const rows: Array<{ label: string; value: string }> = [
       { label: "Tool", value: targetCheck.toolInstalled ? "installed" : "not installed" },
     ];
@@ -953,7 +541,7 @@ function buildHookCheckView(report: HookCheckReport): HookCheckView {
       if (targetCheck.skipReason) {
         rows.push({ label: "Reason", value: targetCheck.skipReason });
       }
-      sections.push({ heading: getTargetTitle(target), rows });
+      sections.push({ heading: targetCheck.displayName, rows });
       continue;
     }
 
@@ -982,7 +570,7 @@ function buildHookCheckView(report: HookCheckReport): HookCheckView {
       rows.push({ label: "Events", value: formatTargetEvents(targetCheck.installedEvents) });
     }
 
-    sections.push({ heading: getTargetTitle(target), rows });
+    sections.push({ heading: targetCheck.displayName, rows });
   }
 
   return {
@@ -1111,29 +699,39 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<number> {
       return CLI_EXIT.UNSUPPORTED_PLATFORM;
     }
 
+    if (operation.kind === "hook-list") {
+      await write(deps, formatHookListText(listAdapters()));
+      return CLI_EXIT.SUCCESS;
+    }
+
     if (operation.kind === "hook-check") {
       const statusResponse = await requestWithAutoStart(deps, { type: "getStatus" }, true).catch(() => null);
-      const configResponse = await requestWithAutoStart(deps, { type: "getConfig" }, true).catch(() => null);
-      const config = configResponse?.ok ? (configResponse.data as LumosConfig) : null;
-      const report = getHookCheckReport(Boolean(statusResponse?.ok), config);
+      const adapters = operation.adapter ? [operation.adapter] : listStableAdapters();
+      const report = getHookCheckReport({
+        daemonReady: Boolean(statusResponse?.ok),
+        adapters,
+      });
       await write(deps, operation.json ? formatJson(report) : formatHookCheckText(buildHookCheckView(report)));
       return CLI_EXIT.SUCCESS;
     }
 
     if (operation.kind === "hook-install") {
-      const response = await requestWithAutoStart(deps, { type: "getConfig" }, true);
-      if (!response.ok) {
-        await writeError(deps, formatWarning(response.message));
-        return exitCodeForResponse(response);
+      if (operation.adapter.supportLevel !== "stable" || operation.adapter.installStrategy.type !== "json-hooks") {
+        await writeError(deps, formatWarning(`${operation.adapter.displayName} does not support automatic hook installation.`));
+        return CLI_EXIT.USAGE_ERROR;
       }
 
-      const config = response.data as LumosConfig;
-      await write(deps, formatJson(installAgentLumosHooks(operation.hookTarget, config.hookIntegrations[operation.hookTarget])));
+      await write(deps, formatJson(installJsonHooks(operation.adapter)));
       return CLI_EXIT.SUCCESS;
     }
 
     if (operation.kind === "hook-uninstall") {
-      await write(deps, formatJson(uninstallAgentLumosHooks(operation.hookTarget)));
+      if (operation.adapter.installStrategy.type !== "json-hooks") {
+        await writeError(deps, formatWarning(`${operation.adapter.displayName} does not support automatic hook uninstall.`));
+        return CLI_EXIT.USAGE_ERROR;
+      }
+
+      await write(deps, formatJson(uninstallJsonHooks(operation.adapter)));
       return CLI_EXIT.SUCCESS;
     }
 
